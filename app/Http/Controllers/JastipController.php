@@ -2,186 +2,399 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\JastipItem;
+use App\Models\Notification;
 use App\Models\Order;
+use App\Models\Withdrawal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class JastipController extends Controller
 {
-    // 1. Halaman Katalog & Filter Interaktif (Hanya untuk Pembeli)
-    public function index(Request $request)
+    private function getDefaultUser()
+    {
+        return [
+            'name'    => session('user_name', 'Rimanda Santa'),
+            'email'   => session('user_email', 'rimandasnt@gmail.com'),
+            'phone'   => session('user_phone', '0812-6489-2026'),
+            'city'    => session('user_city', 'Laguboti, Toba'),
+            'address' => session('user_address', 'Sitoluama, Laguboti, Toba, Sumatera Utara'),
+            'avatar'  => session('user_avatar', 'https://api.dicebear.com/9.x/lorelei/svg?seed=Rimanda&backgroundColor=ffd5dc'),
+        ];
+    }
+
+    // 1. Landing & Auth (Login / Sign Up Terpisah Pembeli vs Jastiper)
+    public function landing()
     {
         if (session('is_jastiper')) {
             return redirect()->route('jastiper.dashboard');
         }
+        $featured = JastipItem::latest()->take(4)->get();
+        return view('landing', compact('featured'));
+    }
+
+    public function authForm(Request $request)
+    {
+        $role = $request->get('role', 'buyer'); // buyer atau jastiper
+        $mode = $request->get('mode', 'login'); // login atau signup
+        return view('auth', compact('role', 'mode'));
+    }
+
+    public function authSubmit(Request $request)
+    {
+        $request->validate([
+            'identifier' => 'required|string|max:120', // Email atau Nomor Telepon
+            'name'       => 'nullable|string|max:100',
+            'role'       => 'required|in:buyer,jastiper',
+        ]);
+
+        $identifier = $request->identifier;
+        $isEmail = filter_var($identifier, FILTER_VALIDATE_EMAIL);
+
+        session([
+            'user_name'  => $request->name ?: 'Rimanda Santa',
+            'user_email' => $isEmail ? $identifier : 'rimandasnt@gmail.com',
+            'user_phone' => !$isEmail ? $identifier : '0812-6489-2026',
+            'user_avatar'=> session('user_avatar', 'https://api.dicebear.com/9.x/lorelei/svg?seed=Rimanda&backgroundColor=ffd5dc'),
+        ]);
+
+        if ($request->role === 'jastiper') {
+            session(['is_jastiper' => true]);
+            return redirect()->route('location.setup', ['next' => 'jastiper'])
+                ->with('success', 'Selamat datang kembali di Portal Jastiper, Rimanda Santa!');
+        }
+
+        return redirect()->route('location.setup', ['next' => 'buyer'])
+            ->with('success', 'Berhasil masuk! Silakan aktifkan & konfirmasi lokasi Anda.');
+    }
+
+    // 2. Halaman Menyalakan Lokasi Setelah Login
+    public function locationSetup(Request $request)
+    {
+        $next = $request->get('next', session('is_jastiper') ? 'jastiper' : 'buyer');
+        return view('location', compact('next'));
+    }
+
+    public function locationSave(Request $request)
+    {
+        $request->validate([
+            'city'    => 'required|string|max:100',
+            'address' => 'required|string|max:255',
+        ]);
+
+        session([
+            'user_city'    => $request->city,
+            'user_address' => $request->address,
+            'location_on'  => true,
+        ]);
+
+        if (session('is_jastiper') || $request->next === 'jastiper') {
+            return redirect()->route('jastiper.dashboard')->with('success', 'Lokasi aktif! Siap mengelola PO & Katalog Jastiper.');
+        }
+
+        return redirect()->route('buyer.dashboard')->with('success', 'Lokasi aktif! Katalog jastip siap disesuaikan dengan kota Anda.');
+    }
+
+    // 3. POV PEMBELI: Dashboard & Grafik Pengeluaran
+    public function buyerDashboard()
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+
+        $user = $this->getDefaultUser();
+        $items = JastipItem::latest()->take(6)->get();
+        $orders = Order::with('item')->latest()->get();
+        $totalSpent = $orders->sum('total_price');
+        $unreadNotif = Notification::where('role', 'buyer')->where('is_read', false)->count();
+
+        return view('buyer.dashboard', compact('user', 'items', 'orders', 'totalSpent', 'unreadNotif'));
+    }
+
+    // 4. POV PEMBELI: Katalog Makanan Lolos Bea Cukai & Filter
+    public function buyerCatalog(Request $request)
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
 
         $query = JastipItem::query();
 
-        // Filter Kata Kunci (Nama / Kota / Deskripsi)
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('origin_city', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('origin_country', 'like', "%{$s}%")
+                  ->orWhere('description', 'like', "%{$s}%");
             });
         }
 
-        // Filter Kategori
         if ($request->filled('category') && $request->category !== 'Semua') {
             $query->where('category', $request->category);
         }
 
-        // Filter Kota / Negara Asal
-        if ($request->filled('origin_city') && $request->origin_city !== 'Semua') {
-            $query->where('origin_city', $request->origin_city);
+        if ($request->filled('country') && $request->country !== 'Semua') {
+            $query->where('origin_country', $request->country);
         }
 
-        // Pengurutan (Terbaru / Harga Termurah / Harga Termahal / Kuota Terbanyak)
-        $sort = $request->get('sort', 'latest');
-        if ($sort === 'price_asc') {
-            $query->orderBy('price', 'asc');
-        } elseif ($sort === 'price_desc') {
-            $query->orderBy('price', 'desc');
-        } elseif ($sort === 'quota_desc') {
-            $query->orderBy('quota', 'desc');
-        } else {
-            $query->orderBy('created_at', 'desc');
-        }
+        $items = $query->latest()->paginate(9)->withQueryString();
+        $categories = [
+            'Cokelat & Olahan Kakao',
+            'Biskuit, Kue Kering & Pastry Tersegel',
+            'Camilan Ringan Kemasan (Snacks & Chips)',
+            'Permen & Manisan Kemasan',
+            'Mie Instan & Bumbu/Saus Kemasan Segel',
+            'Kopi, Teh & Bubuk Minuman',
+            'Makanan Bayi & Suplemen Makanan',
+        ];
+        $countries = JastipItem::select('origin_country')->distinct()->pluck('origin_country');
 
-        $items = $query->paginate(9)->withQueryString();
-
-        // Ambil daftar kota & kategori unik dari database untuk pilihan filter otomatis
-        $cities = JastipItem::select('origin_city')->distinct()->pluck('origin_city');
-        $categories = ['Makanan & Snack', 'Kue & Pastry', 'Minuman & Kopi', 'Skincare & Kosmetik', 'Fashion & Merchandise'];
-
-        return view('catalog.index', compact('items', 'cities', 'categories'));
+        return view('buyer.catalog', compact('items', 'categories', 'countries'));
     }
 
-    // 2. Detail Produk (Hanya untuk Pembeli)
-    public function show($id)
+    // 5. POV PEMBELI: Detail Produk & Buat Pesanan
+    public function productDetail($id)
     {
-        if (session('is_jastiper')) {
-            return redirect()->route('jastiper.dashboard');
-        }
-
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
         $item = JastipItem::findOrFail($id);
-        return view('catalog.show', compact('item'));
+        $user = $this->getDefaultUser();
+        return view('buyer.product-detail', compact('item', 'user'));
     }
 
-    // 3. Checkout Pesanan ACID (Hanya untuk Pembeli)
-    public function storeOrder(Request $request, $id)
+    public function createOrder(Request $request, $id)
     {
-        if (session('is_jastiper')) {
-            return redirect()->route('jastiper.dashboard');
-        }
-
         $validated = $request->validate([
             'quantity'         => 'required|integer|min:1',
-            'buyer_name'       => 'nullable|string|max:100',
-            'shipping_address' => 'nullable|string|max:255',
+            'buyer_name'       => 'required|string|max:100',
+            'buyer_phone'      => 'required|string|max:30',
+            'shipping_address' => 'required|string|max:255',
         ]);
 
+        $order = null;
         try {
-            DB::transaction(function () use ($validated, $id) {
+            DB::transaction(function () use ($validated, $id, &$order) {
                 $item = JastipItem::where('id', $id)->lockForUpdate()->firstOrFail();
-
                 if ($item->quota < $validated['quantity']) {
-                    throw new \RuntimeException("Kuota titipan untuk {$item->name} tidak mencukupi!");
+                    throw new \RuntimeException("Kuota bagasi tersisa {$item->quota} slot.");
                 }
-
                 $item->decrement('quota', $validated['quantity']);
 
-                Order::create([
+                $subtotal = $item->price * $validated['quantity'];
+                $fee = 5000;
+
+                $order = Order::create([
                     'jastip_item_id'   => $item->id,
-                    'buyer_name'       => $validated['buyer_name'] ?? 'Rimanda Panjaitan',
-                    'buyer_phone'      => '0812-3456-7890',
-                    'shipping_address' => $validated['shipping_address'] ?? 'Sitoluama, Laguboti, Toba',
+                    'order_code'       => 'TG-' . strtoupper(Str::random(6)),
+                    'buyer_name'       => $validated['buyer_name'],
+                    'buyer_email'      => 'rimandasnt@gmail.com',
+                    'buyer_phone'      => $validated['buyer_phone'],
+                    'shipping_address' => $validated['shipping_address'],
                     'quantity'         => $validated['quantity'],
-                    'total_price'      => $item->price * $validated['quantity'],
-                    'status'           => 'Menunggu Pembelian Jastiper',
+                    'subtotal'         => $subtotal,
+                    'service_fee'      => $fee,
+                    'total_price'      => $subtotal + $fee,
+                    'payment_status'   => 'Menunggu Pembayaran',
+                    'step_status'      => 1,
+                    'status_label'     => '1. Pesanan Diterima & Dibeli di Negara Asal',
+                ]);
+
+                Notification::create([
+                    'role'    => 'jastiper',
+                    'title'   => "Pesanan Baru #{$order->order_code}",
+                    'message' => "{$validated['buyer_name']} menitip {$validated['quantity']}x {$item->name} ({$item->origin_country}).",
                 ]);
             });
 
-            return redirect()->route('orders.index')->with('success', 'Titipan berhasil dibuat! Kuota bagasi telah diamankan.');
+            return redirect()->route('buyer.payment', $order->id)
+                ->with('success', 'Pesanan berhasil dibuat! Silakan pilih metode pembayaran untuk menyelesaikan transaksi.');
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
         }
     }
 
-    // 4. Halaman Titipan Saya (Hanya untuk Pembeli)
-    public function myOrders()
+    // 6. POV PEMBELI: Pembayaran Setelah Pesanan Dibuat & Resi Digital
+    public function paymentPage($orderId)
     {
-        if (session('is_jastiper')) {
-            return redirect()->route('jastiper.dashboard');
-        }
-
-        $orders = Order::with('item')->orderBy('created_at', 'desc')->get();
-        return view('orders.index', compact('orders'));
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+        $order = Order::with('item')->findOrFail($orderId);
+        return view('buyer.payment', compact('order'));
     }
 
-    // 5. Upgrade Satu Arah: Pembeli -> Jastiper Permanen
-    public function upgradeToJastiper()
+    public function confirmPayment(Request $request, $orderId)
     {
-        session(['is_jastiper' => true]);
-        return redirect()->route('jastiper.dashboard')
-            ->with('success', 'Selamat! Akun Anda resmi menjadi Jastiper. Fitur pengelolaan katalog & pesanan kini aktif.');
-    }
-
-    // 6. Dashboard Eksklusif Jastiper
-    public function jastiperDashboard(Request $request)
-    {
-        if (!session('is_jastiper')) {
-            return redirect()->route('home')->with('error', 'Akses ditolak! Silakan aktifkan akun Jastiper terlebih dahulu.');
-        }
-
-        $items = JastipItem::withCount('orders')->orderBy('created_at', 'desc')->get();
-
-        $orderQuery = Order::with('item')->orderBy('created_at', 'desc');
-        if ($request->filled('status_filter') && $request->status_filter !== 'Semua') {
-            $orderQuery->where('status', $request->status_filter);
-        }
-        $incomingOrders = $orderQuery->get();
-
-        $totalRevenue = Order::sum('total_price');
-        $totalSoldQty = Order::sum('quantity');
-
-        return view('jastiper.dashboard', compact('items', 'incomingOrders', 'totalRevenue', 'totalSoldQty'));
-    }
-
-    // 7. Form Tambah Katalog (Eksklusif Jastiper)
-    public function createItem()
-    {
-        if (!session('is_jastiper')) {
-            return redirect()->route('home')->with('error', 'Hanya Jastiper yang dapat menambahkan produk ke katalog.');
-        }
-
-        return view('jastiper.create');
-    }
-
-    // 8. Simpan Produk Baru ke Katalog (Eksklusif Jastiper)
-    public function storeItem(Request $request)
-    {
-        if (!session('is_jastiper')) {
-            return redirect()->route('home');
-        }
-
-        $validated = $request->validate([
-            'name'         => 'required|string|max:150',
-            'origin_city'  => 'required|string|max:100',
-            'category'     => 'required|string|max:80',
-            'price'        => 'required|integer|min:1000',
-            'quota'        => 'required|integer|min:1',
-            'weight'       => 'nullable|string|max:50',
-            'arrival_date' => 'nullable|date',
-            'description'  => 'nullable|string',
-            'image_file'   => 'nullable|image|max:2048',
-            'image_url'    => 'nullable|url',
+        $request->validate([
+            'payment_method' => 'required|in:PayPal,BRI,BNI,BCA,Amazon Wallet',
         ]);
 
-        $imagePath = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600';
+        $order = Order::with('item')->findOrFail($orderId);
+        $order->update([
+            'payment_method' => $request->payment_method,
+            'payment_status' => 'Lunas',
+        ]);
 
+        Notification::create([
+            'role'    => 'buyer',
+            'title'   => "Pembayaran Lunas #{$order->order_code}",
+            'message' => "Pembayaran Rp " . number_format($order->total_price, 0, ',', '.') . " via {$request->payment_method} berhasil dikonfirmasi.",
+        ]);
+
+        return redirect()->route('buyer.receipt', $order->id)
+            ->with('success', "Pembayaran via {$request->payment_method} berhasil! Berikut bukti resi digital Anda.");
+    }
+
+    public function receiptPage($orderId)
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+        $order = Order::with('item')->findOrFail($orderId);
+        return view('buyer.receipt', compact('order'));
+    }
+
+    // 7. POV PEMBELI: Lacak Pesanan (4 Tahap + Info Kendaraan Lokal) & Notifikasi & Profil
+    public function trackOrders()
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+        $orders = Order::with('item')->latest()->get();
+        return view('buyer.track', compact('orders'));
+    }
+
+    public function buyerNotifications()
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+        $notifications = Notification::where('role', 'buyer')->latest()->get();
+        Notification::where('role', 'buyer')->update(['is_read' => true]);
+        return view('buyer.notifications', compact('notifications'));
+    }
+
+    public function buyerProfile()
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+        $user = $this->getDefaultUser();
+        return view('buyer.profile', compact('user'));
+    }
+
+    // 8. PENGHUBUNG SATU ARAH: Form Daftar Jadi Jastiper (Tanpa Kendaraan/Plat Nomor)
+    public function applyJastiperForm()
+    {
+        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
+        $user = $this->getDefaultUser();
+        return view('shopper.apply', compact('user'));
+    }
+
+    public function applyJastiperSubmit(Request $request)
+    {
+        $request->validate([
+            'jastiper_name'  => 'required|string|max:100',
+            'jastiper_phone' => 'required|string|max:30',
+            'jastiper_addr'  => 'required|string|max:255',
+            'travel_route'   => 'required|string|max:120',
+            'passport_id'    => 'required|string|max:50',
+        ]);
+
+        session([
+            'is_jastiper'   => true,
+            'user_name'     => $request->jastiper_name,
+            'user_phone'    => $request->jastiper_phone,
+            'user_address'  => $request->jastiper_addr,
+            'travel_route'  => $request->travel_route,
+        ]);
+
+        return redirect()->route('jastiper.dashboard')
+            ->with('success', 'Akun Anda resmi terverifikasi menjadi Jastiper! Mode Pembeli telah dinonaktifkan permanen.');
+    }
+
+    // 9. POV JASTIPER: Dashboard, Performa Mingguan, & Pencairan Dana
+    public function shopperDashboard()
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $user = $this->getDefaultUser();
+        $items = JastipItem::latest()->get();
+        $orders = Order::with('item')->latest()->get();
+        $banks = BankAccount::all();
+        $withdrawals = Withdrawal::latest()->get();
+
+        $grossEarnings = $orders->where('payment_status', 'Lunas')->sum('subtotal');
+        $withdrawnTotal = $withdrawals->sum('amount');
+        $availableBalance = max(0, $grossEarnings - $withdrawnTotal);
+        $unreadNotif = Notification::where('role', 'jastiper')->where('is_read', false)->count();
+
+        return view('shopper.dashboard', compact(
+            'user', 'items', 'orders', 'banks', 'withdrawals',
+            'grossEarnings', 'availableBalance', 'unreadNotif'
+        ));
+    }
+
+    public function withdrawFunds(Request $request)
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $request->validate([
+            'bank_id' => 'required|exists:bank_accounts,id',
+            'amount'  => 'required|integer|min:10000',
+        ]);
+
+        $bank = BankAccount::findOrFail($request->bank_id);
+
+        Withdrawal::create([
+            'provider'       => $bank->provider,
+            'account_number' => $bank->account_number,
+            'amount'         => $request->amount,
+            'status'         => 'Berhasil Dicairkan',
+        ]);
+
+        Notification::create([
+            'role'    => 'jastiper',
+            'title'   => 'Pencairan Dana Berhasil',
+            'message' => 'Dana sebesar Rp ' . number_format($request->amount, 0, ',', '.') . " telah ditransfer ke {$bank->provider} ({$bank->account_number}).",
+        ]);
+
+        return back()->with('success', "Dana Rp " . number_format($request->amount, 0, ',', '.') . " berhasil dicairkan ke {$bank->provider}!");
+    }
+
+    // 10. POV JASTIPER: Kelola Katalog & Buka PO Baru (Upload Gambar + Deskripsi)
+    public function shopperCatalog()
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+        $items = JastipItem::latest()->get();
+        $categories = [
+            'Cokelat & Olahan Kakao',
+            'Biskuit, Kue Kering & Pastry Tersegel',
+            'Camilan Ringan Kemasan (Snacks & Chips)',
+            'Permen & Manisan Kemasan',
+            'Mie Instan & Bumbu/Saus Kemasan Segel',
+            'Kopi, Teh & Bubuk Minuman',
+            'Makanan Bayi & Suplemen Makanan',
+        ];
+        return view('shopper.catalog', compact('items', 'categories'));
+    }
+
+    public function storeCatalogItem(Request $request)
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $validated = $request->validate([
+            'name'           => 'required|string|max:150',
+            'origin_country' => 'required|string|max:80',
+            'origin_city'    => 'required|string|max:100',
+            'category'       => 'required|string|max:100',
+            'price'          => 'required|integer|min:1000',
+            'quota'          => 'required|integer|min:1',
+            'weight'         => 'nullable|string|max:50',
+            'po_close_date'  => 'nullable|date',
+            'description'    => 'required|string',
+            'image_file'     => 'nullable|image|max:2048',
+            'image_url'      => 'nullable|url',
+        ]);
+
+        // Otomatis hitung estimasi pengiriman berdasarkan negara asal
+        $country = strtolower($validated['origin_country']);
+        if (str_contains($country, 'singapura') || str_contains($country, 'malaysia')) {
+            $est = "2 - 3 Hari ({$validated['origin_country']} → Indonesia)";
+        } elseif (str_contains($country, 'jepang') || str_contains($country, 'korea')) {
+            $est = "4 - 6 Hari ({$validated['origin_country']} → Indonesia)";
+        } else {
+            $est = "6 - 9 Hari ({$validated['origin_country']} → Indonesia)";
+        }
+
+        $imagePath = 'https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=600';
         if ($request->hasFile('image_file')) {
             $imagePath = $request->file('image_file')->store('jastip_items', 'public');
         } elseif (!empty($validated['image_url'])) {
@@ -189,61 +402,141 @@ class JastipController extends Controller
         }
 
         JastipItem::create([
-            'name'         => $validated['name'],
-            'origin_city'  => $validated['origin_city'],
-            'category'     => $validated['category'],
-            'price'        => $validated['price'],
-            'quota'        => $validated['quota'],
-            'weight'       => $validated['weight'] ?? '500 gr',
-            'arrival_date' => $validated['arrival_date'],
-            'description'  => $validated['description'],
-            'image'        => $imagePath,
+            'name'               => $validated['name'],
+            'origin_country'     => $validated['origin_country'],
+            'origin_city'        => $validated['origin_city'],
+            'category'           => $validated['category'],
+            'estimated_shipping' => $est,
+            'price'              => $validated['price'],
+            'quota'              => $validated['quota'],
+            'weight'             => $validated['weight'] ?? '250 gr',
+            'po_close_date'      => $validated['po_close_date'],
+            'jastiper_name'      => session('user_name', 'Rimanda Santa'),
+            'description'        => $validated['description'],
+            'image'              => $imagePath,
         ]);
 
-        return redirect()->route('jastiper.dashboard')->with('success', 'Produk baru berhasil ditambahkan ke katalog!');
+        return back()->with('success', 'Produk & Open PO baru berhasil ditambahkan ke katalog!');
     }
 
-    // 9. Fitur Interaktif Jastiper: Update Kuota Cepat (+ / -)
-    public function adjustQuota(Request $request, $id)
+    // 11. POV JASTIPER: Kelola 4 Tahap Status Pesanan Berurutan (1 -> 2 -> 3 -> 4)
+    public function shopperOrders()
     {
-        if (!session('is_jastiper')) {
-            return redirect()->route('home');
-        }
-
-        $item = JastipItem::findOrFail($id);
-        if ($request->action === 'inc') {
-            $item->increment('quota');
-        } elseif ($request->action === 'dec' && $item->quota > 0) {
-            $item->decrement('quota');
-        }
-
-        return back()->with('success', "Kuota {$item->name} diperbarui menjadi {$item->quota} slot.");
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+        $orders = Order::with('item')->latest()->get();
+        return view('shopper.orders', compact('orders'));
     }
 
-    // 10. Fitur Interaktif Jastiper: Hapus Produk dari Katalog
-    public function destroyItem($id)
+    public function advanceOrderStep(Request $request, $id)
     {
-        if (!session('is_jastiper')) {
-            return redirect()->route('home');
-        }
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
 
-        $item = JastipItem::findOrFail($id);
-        $item->delete();
-
-        return back()->with('success', 'Produk berhasil dihapus dari etalase.');
-    }
-
-    // 11. Update Status Pesanan Masuk
-    public function updateOrderStatus(Request $request, $id)
-    {
-        if (!session('is_jastiper')) {
-            return redirect()->route('home');
-        }
-
-        $request->validate(['status' => 'required|string|max:100']);
         $order = Order::findOrFail($id);
-        $order->update(['status' => $request->status]);
+        $nextStep = min(4, $order->step_status + 1);
 
-        return back()->with('success', "Status pesanan #ORD-{$order->id} diubah menjadi: {$request->status}");
+        $labels = [
+            1 => '1. Pesanan Diterima & Dibeli di Negara Asal',
+            2 => '2. Lolos Bea Cukai & Penerbangan ke Indonesia',
+            3 => '3. Kurir Lokal Menuju Alamat Pelanggan',
+            4 => '4. Pesanan Selesai & Diterima Pelanggan',
+        ];
+
+        $updateData = [
+            'step_status'  => $nextStep,
+            'status_label' => $labels[$nextStep],
+        ];
+
+        // Jika masuk tahap 3 (kurir lokal mengantar), simpan kendaraan & plat nomor
+        if ($nextStep === 3) {
+            $updateData['courier_vehicle'] = $request->courier_vehicle ?: 'Motor Honda Scoopy Pink Coquette';
+            $updateData['courier_plate']   = $request->courier_plate ?: 'BB 2026 RS';
+        }
+
+        $order->update($updateData);
+
+        Notification::create([
+            'role'    => 'buyer',
+            'title'   => "Update Pesanan #{$order->order_code}",
+            'message' => "Status pesanan Anda kini: {$labels[$nextStep]}",
+        ]);
+
+        return back()->with('success', "Pesanan #{$order->order_code} berlanjut ke tahap {$nextStep}!");
+    }
+
+    // 12. POV JASTIPER: Halaman Notifikasi Terpisah & Profil Interaktif + Rekening Bank
+    public function shopperNotifications()
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+        $notifications = Notification::where('role', 'jastiper')->latest()->get();
+        Notification::where('role', 'jastiper')->update(['is_read' => true]);
+        return view('shopper.notifications', compact('notifications'));
+    }
+
+    public function shopperProfile()
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+        $user = $this->getDefaultUser();
+        $banks = BankAccount::all();
+        return view('shopper.profile', compact('user', 'banks'));
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $request->validate([
+            'name'         => 'required|string|max:100',
+            'email'        => 'required|email',
+            'phone'        => 'required|string|max:30',
+            'address'      => 'required|string|max:255',
+            'avatar_choice'=> 'nullable|string',
+            'avatar_file'  => 'nullable|image|max:2048',
+        ]);
+
+        $avatar = session('user_avatar');
+        if ($request->hasFile('avatar_file')) {
+            $path = $request->file('avatar_file')->store('avatars', 'public');
+            $avatar = asset('storage/' . $path);
+        } elseif ($request->filled('avatar_choice')) {
+            $avatar = $request->avatar_choice;
+        }
+
+        session([
+            'user_name'   => $request->name,
+            'user_email'  => $request->email,
+            'user_phone'  => $request->phone,
+            'user_address'=> $request->address,
+            'user_avatar' => $avatar,
+        ]);
+
+        return back()->with('success', 'Pengaturan akun & foto profil berhasil diperbarui!');
+    }
+
+    public function storeBank(Request $request)
+    {
+        $request->validate([
+            'provider'       => 'required|in:BNI,BRI,PayPal,Amazon Wallet,BCA',
+            'account_number' => 'required|string|max:100',
+        ]);
+
+        BankAccount::create([
+            'provider'       => $request->provider,
+            'account_number' => $request->account_number,
+            'account_holder' => session('user_name', 'Rimanda Santa'),
+            'is_primary'     => false,
+        ]);
+
+        return back()->with('success', "Rekening {$request->provider} berhasil ditambahkan!");
+    }
+
+    public function setPrimaryBank($id)
+    {
+        BankAccount::query()->update(['is_primary' => false]);
+        BankAccount::where('id', $id)->update(['is_primary' => true]);
+        return back()->with('success', 'Rekening utama pencairan diperbarui.');
+    }
+
+    public function destroyBank($id)
+    {
+        BankAccount::findOrFail($id)->delete();
+        return back()->with('success', 'Rekening dihapus.');
     }
 }

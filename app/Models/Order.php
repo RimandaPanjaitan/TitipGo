@@ -1,26 +1,14 @@
 <?php
-
 namespace App\Models;
-
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Order extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
-        'user_id',
-        'jastip_item_id',
-        'quantity',
-        'total_price',
-        'notes',
-        'status',
+        'jastip_item_id', 'order_code', 'buyer_name', 'buyer_email', 'buyer_phone',
+        'shipping_address', 'quantity', 'subtotal', 'service_fee', 'total_price',
+        'payment_method', 'payment_status', 'step_status', 'status_label',
+        'courier_vehicle', 'courier_plate'
     ];
-
-    public function jastipItem(): BelongsTo
-    {
-        return $this->belongsTo(JastipItem::class);
-    }
+    public function item() { return $this->belongsTo(JastipItem::class, 'jastip_item_id'); }
 }
