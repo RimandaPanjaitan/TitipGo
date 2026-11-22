@@ -15,13 +15,15 @@ class JastipController extends Controller
 {
     private function getDefaultUser()
     {
+        $name = session('user_name');
+
         return [
-            'name'    => session('user_name', 'Rimanda Santa'),
-            'email'   => session('user_email', 'rimandasnt@gmail.com'),
-            'phone'   => session('user_phone', '0812-6489-2026'),
-            'city'    => session('user_city', 'Laguboti, Toba'),
-            'address' => session('user_address', 'Sitoluama, Laguboti, Toba, Sumatera Utara'),
-            'avatar'  => session('user_avatar', 'https://api.dicebear.com/9.x/lorelei/svg?seed=Rimanda&backgroundColor=ffd5dc'),
+            'name'    => $name ?: 'Pengguna',
+            'email'   => session('user_email', ''),
+            'phone'   => session('user_phone', ''),
+            'city'    => session('user_city', 'Lokasi Belum Diatur'),
+            'address' => session('user_address', ''),
+            'avatar'  => session('user_avatar', 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($name ?: 'User') . '&backgroundColor=ffd5dc'),
         ];
     }
 
@@ -37,40 +39,61 @@ class JastipController extends Controller
 
     public function authForm(Request $request)
     {
-        $role = $request->get('role', 'buyer'); // buyer atau jastiper
-        $mode = $request->get('mode', 'login'); // login atau signup
+        session()->forget(['is_logged_in', 'user_name', 'user_email', 'user_phone', 'user_address', 'user_avatar']);
+        $role = $request->get('role', 'buyer');
+        $mode = $request->get('mode', 'login');
         return view('auth', compact('role', 'mode'));
     }
 
-    public function authSubmit(Request $request)
+   public function authSubmit(Request $request)
     {
         $request->validate([
-            'identifier' => 'required|string|max:120', // Email atau Nomor Telepon
+            'identifier' => 'required|string|max:120',
             'name'       => 'nullable|string|max:100',
+            'email'      => 'nullable|email|max:120',
+            'phone'      => 'nullable|string|max:30',
+            'address'    => 'nullable|string|max:255',
             'role'       => 'required|in:buyer,jastiper',
         ]);
 
-        $identifier = $request->identifier;
-        $isEmail = filter_var($identifier, FILTER_VALIDATE_EMAIL);
+        $rawInput = trim($request->identifier);
+
+        if ($request->filled('name')) {
+            $accountName = ucwords(strtolower(trim($request->name)));
+        } elseif (filter_var($rawInput, FILTER_VALIDATE_EMAIL)) {
+            $accountName = ucwords(str_replace(['.', '_', '-'], ' ', explode('@', $rawInput)[0]));
+        } else {
+            $accountName = ucwords(strtolower($rawInput));
+        }
+
+        $accountEmail = $request->email
+            ?: (filter_var($rawInput, FILTER_VALIDATE_EMAIL) ? $rawInput : strtolower(str_replace(' ', '', $accountName)) . '@gmail.com');
+
+        $accountPhone = $request->phone
+            ?: (preg_match('/^[0-9+\-\s]{8,}$/', $rawInput) ? $rawInput : '0812-6489-2026');
+
+        $accountAddress = $request->address ?: session('user_address', 'Sitoluama, Laguboti, Toba, Sumatera Utara');
 
         session([
-            'user_name'  => $request->name ?: 'Rimanda Santa',
-            'user_email' => $isEmail ? $identifier : 'rimandasnt@gmail.com',
-            'user_phone' => !$isEmail ? $identifier : '0812-6489-2026',
-            'user_avatar'=> session('user_avatar', 'https://api.dicebear.com/9.x/lorelei/svg?seed=Rimanda&backgroundColor=ffd5dc'),
+            'user_name'    => $accountName,
+            'user_email'   => $accountEmail,
+            'user_phone'   => $accountPhone,
+            'user_address' => $accountAddress,
+            'user_avatar'  => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
         ]);
 
         if ($request->role === 'jastiper') {
             session(['is_jastiper' => true]);
             return redirect()->route('location.setup', ['next' => 'jastiper'])
-                ->with('success', 'Selamat datang kembali di Portal Jastiper, Rimanda Santa!');
+                ->with('success', "Selamat datang di Portal Jastiper, {$accountName}!");
         }
 
+        session(['is_jastiper' => false]);
         return redirect()->route('location.setup', ['next' => 'buyer'])
-            ->with('success', 'Berhasil masuk! Silakan aktifkan & konfirmasi lokasi Anda.');
+            ->with('success', "Halo {$accountName}! Silakan aktifkan lokasi Anda.");
     }
 
-    // 2. Halaman Menyalakan Lokasi Setelah Login
+    // 2. Halaman Menyalakan Lokasi Setelah Login -> Arahkan ke Welcome Screen
     public function locationSetup(Request $request)
     {
         $next = $request->get('next', session('is_jastiper') ? 'jastiper' : 'buyer');
@@ -90,11 +113,21 @@ class JastipController extends Controller
             'location_on'  => true,
         ]);
 
-        if (session('is_jastiper') || $request->next === 'jastiper') {
-            return redirect()->route('jastiper.dashboard')->with('success', 'Lokasi aktif! Siap mengelola PO & Katalog Jastiper.');
+        if ($request->next === 'jastiper') {
+            session(['is_jastiper' => true]);
         }
 
-        return redirect()->route('buyer.dashboard')->with('success', 'Lokasi aktif! Katalog jastip siap disesuaikan dengan kota Anda.');
+        return redirect()->route('welcome.screen');
+    }
+
+    // 2B. Halaman Welcome Setelah Login & Lokasi Aktif Sebelum Masuk Dashboard
+    public function welcomeScreen()
+    {
+        $user = $this->getDefaultUser();
+        $isJastiper = (bool) session('is_jastiper', false);
+        $destinationRoute = $isJastiper ? route('jastiper.dashboard') : route('buyer.dashboard');
+
+        return view('welcome-screen', compact('user', 'isJastiper', 'destinationRoute'));
     }
 
     // 3. POV PEMBELI: Dashboard & Grafik Pengeluaran
@@ -184,7 +217,7 @@ class JastipController extends Controller
                     'jastip_item_id'   => $item->id,
                     'order_code'       => 'TG-' . strtoupper(Str::random(6)),
                     'buyer_name'       => $validated['buyer_name'],
-                    'buyer_email'      => 'rimandasnt@gmail.com',
+                    'buyer_email'      => session['user_email'],
                     'buyer_phone'      => $validated['buyer_phone'],
                     'shipping_address' => $validated['shipping_address'],
                     'quantity'         => $validated['quantity'],
@@ -289,11 +322,12 @@ class JastipController extends Controller
         ]);
 
         session([
-            'is_jastiper'   => true,
-            'user_name'     => $request->jastiper_name,
-            'user_phone'    => $request->jastiper_phone,
-            'user_address'  => $request->jastiper_addr,
-            'travel_route'  => $request->travel_route,
+            'is_logged_in' => true,
+            'user_name'    => $accountName,
+            'user_email'   => $accountEmail,
+            'user_phone'   => $accountPhone,
+            'user_address' => $accountAddress,
+            'user_avatar'  => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
         ]);
 
         return redirect()->route('jastiper.dashboard')

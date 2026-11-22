@@ -45,3 +45,11 @@ Route::prefix('jastiper')->group(function () {
     Route::patch('/bank/{id}/primary', [JastipController::class, 'setPrimaryBank'])->name('jastiper.bank.primary');
     Route::delete('/bank/{id}', [JastipController::class, 'destroyBank'])->name('jastiper.bank.destroy');
 });
+
+// Landing, Auth Terpisah (Pembeli vs Jastiper), Setup Lokasi, & Welcome Screen
+Route::get('/', [JastipController::class, 'landing'])->name('landing');
+Route::get('/auth', [JastipController::class, 'authForm'])->name('auth');
+Route::post('/auth', [JastipController::class, 'authSubmit'])->name('auth.submit');
+Route::get('/location', [JastipController::class, 'locationSetup'])->name('location.setup');
+Route::post('/location', [JastipController::class, 'locationSave'])->name('location.save');
+Route::get('/welcome-user', [JastipController::class, 'welcomeScreen'])->name('welcome.screen');
