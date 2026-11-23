@@ -29,7 +29,7 @@
         </button>
     </div>
 
-    <!-- Form Tambah Item / Buka PO (Muncul Interaktif saat Tombol Diklik) -->
+    <!-- Form Tambah Item / Buka PO -->
     <div id="addCatalogCard" class="hidden bg-white p-6 sm:p-7 rounded-[2rem] border-2 border-[#A64D69]/40 shadow-sm space-y-4 text-xs transition-all">
         <div class="flex items-center justify-between border-b border-[#FCE4EC] pb-3">
             <h2 id="formCardTitle" class="font-extrabold text-base text-[#3D1824]">Tambah Item Baru</h2>
@@ -59,15 +59,8 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                    <label class="block font-bold mb-1 text-[#3D1824]">Negara Asal *</label>
-                    <select name="origin_country" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-2.5 font-semibold">
-                        <option value="Jepang">Jepang</option>
-                        <option value="Korea Selatan">Korea Selatan</option>
-                        <option value="Singapura">Singapura</option>
-                        <option value="Malaysia">Malaysia</option>
-                        <option value="Belanda">Belanda</option>
-                        <option value="Prancis">Prancis</option>
-                    </select>
+                    <label class="block font-bold mb-1 text-[#3D1824]">Negara Asal (Pilih / Ketik) *</label>
+                    <x-world-country-select name="origin_country" placeholder="Pilih atau ketik huruf awal negara..." />
                 </div>
                 <div>
                     <label class="block font-bold mb-1 text-[#3D1824]">Kota Pembelian *</label>
@@ -110,7 +103,7 @@
         </form>
     </div>
 
-    <!-- 4 Kartu Statistik Katalog (Seperti Desain Referensi) -->
+    <!-- 4 Kartu Statistik Katalog -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 text-center text-xs">
         <div class="bg-white p-4 rounded-3xl border border-[#F8BBD0] shadow-2xs">
             <p class="text-xl font-black text-[#3D1824]">{{ $totalItems }}</p>
@@ -130,7 +123,7 @@
         </div>
     </div>
 
-    <!-- PANEL 1: KELOLA KATALOG (List Horizontal Interaktif: Toggle Switch + Edit + Hapus) -->
+    <!-- PANEL 1: KELOLA KATALOG -->
     <div id="panel-katalog" class="space-y-3">
         @forelse($items as $item)
             @php $isActive = $item->quota > 0; @endphp
@@ -151,9 +144,7 @@
                     </div>
                 </div>
 
-                <!-- Kontrol Interaktif Kanan: Toggle Switch + Edit + Hapus -->
                 <div class="flex items-center gap-2.5 self-end sm:self-center shrink-0">
-                    <!-- Toggle Switch Aktif/Nonaktif -->
                     <form action="{{ route('jastiper.catalog.toggle', $item->id) }}" method="POST" title="Klik untuk aktif/nonaktifkan item">
                         @csrf
                         @method('PATCH')
@@ -162,7 +153,6 @@
                         </button>
                     </form>
 
-                    <!-- Tombol Edit (Buka Modal Edit) -->
                     <button type="button"
                         onclick='openEditModal(@json($item))'
                         title="Edit item"
@@ -170,7 +160,6 @@
                         <i data-lucide="pencil" class="w-4 h-4"></i>
                     </button>
 
-                    <!-- Tombol Hapus -->
                     <form action="{{ route('jastiper.catalog.destroy', $item->id) }}" method="POST" onsubmit="return confirm('Hapus {{ $item->name }} dari katalog?')">
                         @csrf
                         @method('DELETE')
@@ -188,7 +177,7 @@
         @endforelse
     </div>
 
-    <!-- PANEL 2: KELOLA PRE-ORDER (Progress Bar Slot & Status PO seperti Screenshot Kanan) -->
+    <!-- PANEL 2: KELOLA PRE-ORDER -->
     <div id="panel-preorder" class="hidden space-y-3">
         @foreach($items as $item)
             @php
@@ -222,7 +211,6 @@
                     </div>
                 </div>
 
-                <!-- Progress Bar Kuota PO -->
                 <div class="space-y-1">
                     <div class="flex justify-between text-[11px] font-bold text-[#7A4958]">
                         <span>Kuota Terisi: {{ $bookedSlot }} / {{ $maxSlot }} slot (Sisa {{ $item->quota }})</span>
@@ -261,7 +249,7 @@
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block font-bold mb-1">Negara Asal *</label>
-                    <input type="text" name="origin_country" id="editCountry" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-2.5">
+                    <x-world-country-select name="origin_country" id="editCountryWrapper" placeholder="Pilih atau ketik negara..." />
                 </div>
                 <div>
                     <label class="block font-bold mb-1">Kota Pembelian *</label>
@@ -317,7 +305,7 @@ function switchCatalogView(mode) {
 function openEditModal(item) {
     document.getElementById('editItemForm').action = '/jastiper/catalog/' + item.id;
     document.getElementById('editName').value = item.name || '';
-    document.getElementById('editCountry').value = item.origin_country || '';
+    document.querySelector('#editCountryWrapper input[name="origin_country"]').value = item.origin_country || '';
     document.getElementById('editCity').value = item.origin_city || '';
     document.getElementById('editPrice').value = item.price || 0;
     document.getElementById('editQuota').value = item.quota ?? 0;

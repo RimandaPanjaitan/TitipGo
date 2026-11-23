@@ -27,7 +27,7 @@ class JastipController extends Controller
         ];
     }
 
-    // 1. Landing & Auth (Log In: Nama, Email @gmail.com, Password | Sign Up: Lengkap)
+    // 1. Landing & Auth (Bedakan Akun Baru [Sign Up = Kosongan] vs Akun Lama [Log In = Ada Data])
     public function landing()
     {
         $featuredItems = JastipItem::latest()->take(4)->get();
@@ -75,10 +75,12 @@ class JastipController extends Controller
             'password.regex'    => 'Kata sandi wajib memuat huruf besar, huruf kecil, angka, dan karakter spesial.',
         ]);
 
-        $accountName = ucwords(strtolower(trim($request->name)));
-        $isJastiper  = ($request->role === 'jastiper');
+        $accountName  = ucwords(strtolower(trim($request->name)));
+        $accountEmail = strtolower(trim($request->email));
+        $isJastiper   = ($request->role === 'jastiper');
+        $isNewAccount = ($mode === 'signup');
 
-        if ($mode === 'signup') {
+        if ($isNewAccount) {
             $phone       = trim($request->phone);
             $street      = trim($request->street);
             $city        = trim($request->city);
@@ -96,23 +98,28 @@ class JastipController extends Controller
 
         session([
             'is_logged_in'     => true,
+            'is_new_account'   => $isNewAccount,
             'is_jastiper'      => $isJastiper,
             'user_name'        => $accountName,
-            'user_email'       => strtolower(trim($request->email)),
+            'user_email'       => $accountEmail,
             'user_phone'       => $phone,
             'user_street'      => $street,
             'user_city'        => $city,
             'user_province'    => $province,
             'user_postal_code' => $postalCode,
             'user_address'     => $fullAddress,
-            'user_birthdate'   => '14 Februari 2002',
-            'user_gender'      => 'Perempuan',
+            'user_birthdate'   => $isNewAccount ? '' : '14 Februari 2002',
+            'user_gender'      => $isNewAccount ? '' : 'Perempuan',
             'user_avatar'      => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
         ]);
         session()->save();
 
+        $greeting = $isNewAccount
+            ? "Pendaftaran akun baru berhasil, {$accountName}! Akun Anda siap digunakan dari awal."
+            : "Selamat datang kembali, {$accountName}!";
+
         return redirect()->route('location.setup', ['next' => $isJastiper ? 'jastiper' : 'buyer'])
-            ->with('success', "Selamat datang, {$accountName}! Silakan konfirmasi titik lokasi Anda.");
+            ->with('success', $greeting);
     }
 
     // 2. Halaman Menyalakan Lokasi & Welcome Screen
@@ -152,16 +159,27 @@ class JastipController extends Controller
         return view('welcome-screen', compact('user', 'isJastiper', 'destinationRoute'));
     }
 
-    // 3. POV PEMBELI: Dashboard, Katalog, Detail Produk, Pemesanan, Pembayaran, Resi, Pelacakan, Profil
+    // 3. POV PEMBELI: Akun Baru Kosongan vs Akun Masuk Ada Riwayat
     public function buyerDashboard()
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
 
-        $user = $this->getDefaultUser();
+        $user  = $this->getDefaultUser();
         $items = JastipItem::latest()->take(6)->get();
-        $orders = Order::with('item')->latest()->get();
-        $totalSpent = $orders->sum('total_price');
-        $unreadNotif = Notification::where('role', 'buyer')->where('is_read', false)->count();
+
+        if (session('is_new_account')) {
+            $email       = session('user_email');
+            $orders      = Order::with('item')->where('buyer_email', $email)->latest()->get();
+            $totalSpent  = $orders->sum('total_price');
+            $unreadNotif = Notification::where('role', 'buyer')
+                ->where('message', 'like', "%{$user['name']}%")
+                ->where('is_read', false)
+                ->count();
+        } else {
+            $orders      = Order::with('item')->latest()->get();
+            $totalSpent  = $orders->sum('total_price');
+            $unreadNotif = Notification::where('role', 'buyer')->where('is_read', false)->count();
+        }
 
         return view('buyer.dashboard', compact('user', 'items', 'orders', 'totalSpent', 'unreadNotif'));
     }
@@ -296,7 +314,7 @@ class JastipController extends Controller
         Notification::create([
             'role'    => 'buyer',
             'title'   => "Pembayaran Lunas #{$order->order_code}",
-            'message' => "Pembayaran Rp " . number_format($order->total_price, 0, ',', '.') . " via {$request->payment_method} berhasil dikonfirmasi.",
+            'message' => "Pembayaran ({$order->buyer_name}) sebesar Rp " . number_format($order->total_price, 0, ',', '.') . " via {$request->payment_method} berhasil dikonfirmasi.",
         ]);
 
         return redirect()->route('buyer.receipt', $order->id)
@@ -313,15 +331,34 @@ class JastipController extends Controller
     public function trackOrders()
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
-        $orders = Order::with('item')->latest()->get();
+
+        if (session('is_new_account')) {
+            $orders = Order::with('item')->where('buyer_email', session('user_email'))->latest()->get();
+        } else {
+            $orders = Order::with('item')->latest()->get();
+        }
+
         return view('buyer.track', compact('orders'));
     }
 
     public function buyerNotifications()
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
-        $notifications = Notification::where('role', 'buyer')->latest()->get();
-        Notification::where('role', 'buyer')->update(['is_read' => true]);
+
+        $userName = session('user_name');
+        if (session('is_new_account')) {
+            $notifications = Notification::where('role', 'buyer')
+                ->where('message', 'like', "%{$userName}%")
+                ->latest()
+                ->get();
+            Notification::where('role', 'buyer')
+                ->where('message', 'like', "%{$userName}%")
+                ->update(['is_read' => true]);
+        } else {
+            $notifications = Notification::where('role', 'buyer')->latest()->get();
+            Notification::where('role', 'buyer')->update(['is_read' => true]);
+        }
+
         return view('buyer.notifications', compact('notifications'));
     }
 
@@ -368,7 +405,7 @@ class JastipController extends Controller
         return back()->with('success', 'Profil dan foto akun Pembeli berhasil diperbarui!');
     }
 
-    // 4. ALUR SATU ARAH: Pembeli Mendaftar Jadi Jastiper (3 Bagian Form Partner Jastiper)
+    // 4. ALUR SATU ARAH: Pembeli Mendaftar Jadi Jastiper (NIK 16 Digit + Tetap Jaga Status Akun Baru Kosongan)
     public function applyJastiperForm()
     {
         if (session('is_jastiper')) {
@@ -380,12 +417,16 @@ class JastipController extends Controller
 
     public function applyJastiperSubmit(Request $request)
     {
+        $idRule = $request->input('id_type') === 'KTP'
+            ? ['required', 'regex:/^[0-9]{16}$/']
+            : ['required', 'string', 'min:6', 'max:20'];
+
         $request->validate([
             'name'           => 'required|string|max:100',
             'email'          => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
             'phone'          => 'required|string|max:30',
             'id_type'        => 'required|in:KTP,Paspor',
-            'id_number'      => 'required|string|min:4|max:30',
+            'id_number'      => $idRule,
             'full_address'   => 'required|string|max:255',
             'city'           => 'required|string|max:100',
             'province'       => 'required|string|max:100',
@@ -402,6 +443,7 @@ class JastipController extends Controller
             'agree_customs'  => 'accepted',
         ], [
             'email.regex'                => 'Email Jastiper wajib menggunakan domain @gmail.com.',
+            'id_number.regex'            => 'Nomor Induk Kependudukan (NIK) KTP wajib tepat 16 digit angka.',
             'return_date.after_or_equal' => 'Tanggal kembali tidak boleh lebih awal dari tanggal berangkat.',
             'categories.required'        => 'Pilih minimal satu kategori makanan yang dapat dibawa.',
             'agree_customs.accepted'     => 'Centang kotak persetujuan aturan Bea Cukai dan Karantina.',
@@ -415,13 +457,16 @@ class JastipController extends Controller
             $bank->is_primary     = true;
             $bank->save();
 
-            $notif = new Notification();
-            $notif->role    = 'jastiper';
-            $notif->title   = 'Akun Partner Jastiper Aktif!';
-            $notif->message = "Selamat {$request->name}, rute {$request->destination} ({$request->capacity_kg} kg) siap digunakan untuk membuka PO.";
-            $notif->save();
+            // Jika akun baru mendaftar jadi Jastiper, tidak perlu menyisipkan notifikasi otomatis agar tetap kosongan
+            if (!session('is_new_account')) {
+                $notif = new Notification();
+                $notif->role    = 'jastiper';
+                $notif->title   = 'Akun Partner Jastiper Aktif!';
+                $notif->message = "Selamat {$request->name}, rute {$request->destination} ({$request->capacity_kg} kg) siap digunakan untuk membuka PO.";
+                $notif->save();
+            }
         } catch (\Throwable $e) {
-            // Tetap lanjutkan aktivasi sesi Jastiper meskipun tabel log opsional mengalami kendala
+            // Lanjutkan
         }
 
         session([
@@ -443,24 +488,41 @@ class JastipController extends Controller
             ->with('success', "Selamat {$request->name}! Akun Anda telah resmi aktif sebagai Partner Jastiper.");
     }
 
-    // 5. POV JASTIPER: Dashboard, Grafik, & Pencairan Dana
+    // 5. POV JASTIPER: Dashboard (Akun Baru = Kosongan 0 | Akun Masuk = Data Aktif)
     public function shopperDashboard()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
 
-        $user         = $this->getDefaultUser();
-        $items        = JastipItem::latest()->get();
-        $orders       = Order::with('item')->latest()->get();
-        $bankAccounts = BankAccount::latest()->get();
-        $withdrawals  = Withdrawal::latest()->get();
+        $user     = $this->getDefaultUser();
+        $userName = session('user_name');
 
-        $totalRevenue     = Order::where('payment_status', 'Lunas')->sum('subtotal');
-        $totalWithdrawn   = Withdrawal::sum('amount');
-        $availableBalance = max(0, $totalRevenue - $totalWithdrawn);
-        $unreadNotif      = Notification::where('role', 'jastiper')->where('is_read', false)->count();
-
-        $chartLabels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-        $chartData   = [2, 4, 3, 5, 4, 6, max(1, $orders->count())];
+        if (session('is_new_account')) {
+            $items            = JastipItem::where('jastiper_name', $userName)->latest()->get();
+            $itemIds          = $items->pluck('id');
+            $orders           = Order::with('item')->whereIn('jastip_item_id', $itemIds)->latest()->get();
+            $bankAccounts     = BankAccount::where('account_holder', 'like', "%{$userName}%")->latest()->get();
+            $withdrawals      = collect();
+            $totalRevenue     = $orders->where('payment_status', 'Lunas')->sum('subtotal');
+            $totalWithdrawn   = 0;
+            $availableBalance = $totalRevenue;
+            $unreadNotif      = Notification::where('role', 'jastiper')
+                ->where('message', 'like', "%{$userName}%")
+                ->where('is_read', false)
+                ->count();
+            $chartLabels      = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+            $chartData        = [0, 0, 0, 0, 0, 0, $orders->count()];
+        } else {
+            $items            = JastipItem::latest()->get();
+            $orders           = Order::with('item')->latest()->get();
+            $bankAccounts     = BankAccount::latest()->get();
+            $withdrawals      = Withdrawal::latest()->get();
+            $totalRevenue     = Order::where('payment_status', 'Lunas')->sum('subtotal');
+            $totalWithdrawn   = Withdrawal::sum('amount');
+            $availableBalance = max(0, $totalRevenue - $totalWithdrawn);
+            $unreadNotif      = Notification::where('role', 'jastiper')->where('is_read', false)->count();
+            $chartLabels      = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+            $chartData        = [2, 4, 3, 5, 4, 6, max(1, $orders->count())];
+        }
 
         return view('shopper.dashboard', compact(
             'user',
@@ -486,7 +548,8 @@ class JastipController extends Controller
             'amount'          => 'required|integer|min:10000',
         ]);
 
-        $bank = BankAccount::findOrFail($request->bank_account_id);
+        $bank     = BankAccount::findOrFail($request->bank_account_id);
+        $userName = session('user_name');
 
         Withdrawal::create([
             'provider'       => $bank->provider,
@@ -498,17 +561,23 @@ class JastipController extends Controller
         Notification::create([
             'role'    => 'jastiper',
             'title'   => 'Pencairan Dana Berhasil',
-            'message' => 'Dana sebesar Rp ' . number_format($request->amount, 0, ',', '.') . " telah ditransfer ke {$bank->provider} ({$bank->account_number}).",
+            'message' => "Dana ({$userName}) sebesar Rp " . number_format($request->amount, 0, ',', '.') . " telah ditransfer ke {$bank->provider} ({$bank->account_number}).",
         ]);
 
         return back()->with('success', 'Dana Rp ' . number_format($request->amount, 0, ',', '.') . " berhasil dicairkan ke {$bank->provider}!");
     }
 
-    // 6. POV JASTIPER: Kelola Katalog & Buka PO Baru
+    // 6. POV JASTIPER: Kelola Katalog & Pre-Order (Akun Baru = Kosongan sampai buka PO sendiri)
     public function shopperCatalog()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
-        $items = JastipItem::latest()->get();
+
+        if (session('is_new_account')) {
+            $items = JastipItem::where('jastiper_name', session('user_name'))->latest()->get();
+        } else {
+            $items = JastipItem::latest()->get();
+        }
+
         return view('shopper.catalog', compact('items'));
     }
 
@@ -605,11 +674,18 @@ class JastipController extends Controller
         return back()->with('success', "Item \"{$name}\" berhasil dihapus dari katalog.");
     }
 
-    // 7. POV JASTIPER: Kelola Status Pesanan (4 Tahap)
+    // 7. POV JASTIPER: Kelola Status Pesanan (Akun Baru = Kosongan)
     public function shopperOrders()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
-        $orders = Order::with('item')->latest()->get();
+
+        if (session('is_new_account')) {
+            $itemIds = JastipItem::where('jastiper_name', session('user_name'))->pluck('id');
+            $orders  = Order::with('item')->whereIn('jastip_item_id', $itemIds)->latest()->get();
+        } else {
+            $orders  = Order::with('item')->latest()->get();
+        }
+
         return view('shopper.orders', compact('orders'));
     }
 
@@ -642,18 +718,31 @@ class JastipController extends Controller
         Notification::create([
             'role'    => 'buyer',
             'title'   => "Update Pesanan #{$order->order_code}",
-            'message' => "Status pesanan Anda kini: {$updateData['status_label']}",
+            'message' => "Status pesanan ({$order->buyer_name}) Anda kini: {$updateData['status_label']}",
         ]);
 
         return back()->with('success', "Status pesanan #{$order->order_code} berhasil diperbarui ke tahap {$step}!");
     }
 
-    // 8. POV JASTIPER: Notifikasi, Profil, Foto & Rekening Bank
+    // 8. POV JASTIPER: Notifikasi (Akun Baru = Kosongan | Akun Masuk = Ada Riwayat)
     public function shopperNotifications()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
-        $notifications = Notification::where('role', 'jastiper')->latest()->get();
-        Notification::where('role', 'jastiper')->update(['is_read' => true]);
+
+        $userName = session('user_name');
+        if (session('is_new_account')) {
+            $notifications = Notification::where('role', 'jastiper')
+                ->where('message', 'like', "%{$userName}%")
+                ->latest()
+                ->get();
+            Notification::where('role', 'jastiper')
+                ->where('message', 'like', "%{$userName}%")
+                ->update(['is_read' => true]);
+        } else {
+            $notifications = Notification::where('role', 'jastiper')->latest()->get();
+            Notification::where('role', 'jastiper')->update(['is_read' => true]);
+        }
+
         return view('shopper.notifications', compact('notifications'));
     }
 
@@ -661,7 +750,9 @@ class JastipController extends Controller
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
         $user         = $this->getDefaultUser();
-        $bankAccounts = BankAccount::latest()->get();
+        $bankAccounts = session('is_new_account')
+            ? BankAccount::where('account_holder', 'like', "%{$user['name']}%")->latest()->get()
+            : BankAccount::latest()->get();
         return view('shopper.profile', compact('user', 'bankAccounts'));
     }
 

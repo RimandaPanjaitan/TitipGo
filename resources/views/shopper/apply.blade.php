@@ -66,14 +66,15 @@
                 </div>
                 <div>
                     <label class="block font-bold mb-1.5 text-[#3D1824]">Identitas *</label>
-                    <select name="id_type" class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3 font-semibold">
-                        <option value="KTP">KTP</option>
-                        <option value="Paspor">Paspor</option>
+                    <select name="id_type" id="idTypeSelect" class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3 font-semibold">
+                        <option value="KTP" {{ old('id_type') === 'Paspor' ? '' : 'selected' }}>KTP (NIK 16 Digit)</option>
+                        <option value="Paspor" {{ old('id_type') === 'Paspor' ? 'selected' : '' }}>Paspor</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block font-bold mb-1.5 text-[#3D1824]">Nomor identitas *</label>
-                    <input type="text" name="id_number" value="{{ old('id_number') }}" placeholder="Nomor KTP/Paspor" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3">
+                    <label id="idNumberLabel" class="block font-bold mb-1.5 text-[#3D1824]">Nomor NIK KTP (Wajib 16 Digit) *</label>
+                    <input type="text" name="id_number" id="nikInput" value="{{ old('id_number') }}" maxlength="16" pattern="[0-9]{16}" title="NIK KTP wajib tepat 16 digit angka" placeholder="Masukkan 16 digit NIK" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3 font-mono font-bold">
+                    <p id="nikCounter" class="text-[11px] font-bold text-rose-500 mt-1">0 / 16 digit angka</p>
                 </div>
             </div>
 
@@ -107,35 +108,29 @@
                 </div>
                 <div>
                     <h2 class="text-base font-extrabold text-[#3D1824]">Rencana perjalanan & titipan</h2>
-                    <p class="text-xs text-[#7A4958]">Tentukan negara cakupan dan kapasitas barang bawaan.</p>
+                    <p class="text-xs text-[#7A4958]">Tentukan negara cakupan dari seluruh negara di dunia dan kapasitas barang bawaan.</p>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                    <label class="block font-bold mb-1.5 text-[#3D1824]">Negara tujuan *</label>
-                    <select name="destination" class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3 font-semibold">
-                        <option value="Jepang">Jepang</option>
-                        <option value="Korea Selatan">Korea Selatan</option>
-                        <option value="Singapura">Singapura</option>
-                        <option value="Malaysia">Malaysia</option>
-                        <option value="Eropa (Belanda/Prancis)">Eropa (Belanda/Prancis)</option>
-                    </select>
+                    <label class="block font-bold mb-1.5 text-[#3D1824]">Negara tujuan (Pilih / Ketik) *</label>
+                    <x-world-country-select name="destination" :value="old('destination', 'Jepang')" placeholder="Pilih atau ketik huruf awal negara..." />
                 </div>
                 <div>
                     <label class="block font-bold mb-1.5 text-[#3D1824]">Tanggal berangkat *</label>
-                    <input type="date" name="departure_date" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3">
+                    <input type="date" name="departure_date" value="{{ old('departure_date') }}" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3">
                 </div>
                 <div>
                     <label class="block font-bold mb-1.5 text-[#3D1824]">Tanggal kembali *</label>
-                    <input type="date" name="return_date" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3">
+                    <input type="date" name="return_date" value="{{ old('return_date') }}" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3">
                 </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="block font-bold mb-1.5 text-[#3D1824]">Kapasitas titipan (kg) *</label>
-                    <input type="number" name="capacity_kg" value="10" min="1" max="50" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3 font-semibold">
+                    <input type="number" name="capacity_kg" value="{{ old('capacity_kg', 10) }}" min="1" max="100" required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3 font-semibold">
                 </div>
                 <div>
                     <label class="block font-bold mb-1.5 text-[#3D1824]">Pengalaman menjadi Jastiper *</label>
@@ -163,7 +158,7 @@
 
             <div>
                 <label class="block font-bold mb-1.5 text-[#3D1824]">Motivasi dan pengalaman *</label>
-                <textarea name="motivation" rows="3" placeholder="Ceritakan pengalaman perjalanan, pemahaman produk impor, dan alasan ingin bergabung..." required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3"></textarea>
+                <textarea name="motivation" rows="3" placeholder="Ceritakan pengalaman perjalanan, pemahaman produk impor, dan alasan ingin bergabung..." required class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-4 py-3">{{ old('motivation') }}</textarea>
             </div>
         </div>
 
@@ -213,4 +208,36 @@
         </div>
     </form>
 </div>
+
+<script>
+const nikInput      = document.getElementById('nikInput');
+const nikCounter    = document.getElementById('nikCounter');
+const idTypeSelect  = document.getElementById('idTypeSelect');
+const idNumberLabel = document.getElementById('idNumberLabel');
+
+function updateNikValidation() {
+    const isKtp = idTypeSelect.value === 'KTP';
+    if (isKtp) {
+        nikInput.value = nikInput.value.replace(/\D/g, '').slice(0, 16);
+        nikInput.setAttribute('maxlength', '16');
+        nikInput.setAttribute('pattern', '[0-9]{16}');
+        nikInput.placeholder = 'Masukkan 16 digit NIK';
+        idNumberLabel.textContent = 'Nomor NIK KTP (Wajib 16 Digit) *';
+        const len = nikInput.value.length;
+        nikCounter.textContent = `${len} / 16 digit angka`;
+        nikCounter.className = len === 16 ? 'text-[11px] font-bold text-emerald-600 mt-1' : 'text-[11px] font-bold text-rose-500 mt-1';
+    } else {
+        nikInput.removeAttribute('pattern');
+        nikInput.setAttribute('maxlength', '20');
+        nikInput.placeholder = 'Masukkan nomor Paspor';
+        idNumberLabel.textContent = 'Nomor Paspor *';
+        nikCounter.textContent = 'Format Paspor aktif (6–20 karakter)';
+        nikCounter.className = 'text-[11px] font-bold text-[#7A4958] mt-1';
+    }
+}
+
+nikInput.addEventListener('input', updateNikValidation);
+idTypeSelect.addEventListener('change', updateNikValidation);
+updateNikValidation();
+</script>
 @endsection

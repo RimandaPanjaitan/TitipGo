@@ -3,7 +3,7 @@
 use App\Http\Controllers\JastipController;
 use Illuminate\Support\Facades\Route;
 
-// Halaman Awal, Auth Validasi Ketat, Lokasi, & Welcome Screen
+// Halaman Awal, Auth (Login Ringkas vs Sign Up Lengkap), Lokasi, & Welcome Screen
 Route::get('/', [JastipController::class, 'landing'])->name('landing');
 Route::get('/auth', [JastipController::class, 'authForm'])->name('auth');
 Route::post('/auth', [JastipController::class, 'authSubmit'])->name('auth.submit');
@@ -29,7 +29,6 @@ Route::prefix('buyer')->group(function () {
     Route::get('/profile', [JastipController::class, 'buyerProfile'])->name('buyer.profile');
     Route::post('/profile', [JastipController::class, 'updateBuyerProfile'])->name('buyer.profile.update');
 });
-
 
 // POV Jastiper
 Route::prefix('jastiper')->group(function () {
