@@ -24,7 +24,7 @@
     </div>
 
     <!-- Grid Menu Samping + Form Pengaturan -->
-    <form action="{{ route('buyer.profile.update') }}" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-6">
+   <form action="{{ route('buyer.profile.update') }}" method="POST" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-4 gap-6">
         @csrf
         <!-- Sidebar Tab Pengaturan -->
         <div class="bg-white rounded-3xl border border-[#F8BBD0] p-3 space-y-1 h-fit text-xs font-bold">
@@ -134,28 +134,42 @@
             </div>
 
             <!-- TAB 5: Akun & Avatar -->
-            <div id="tabPanel-akun" class="profile-panel hidden space-y-5">
-                <div class="flex items-center justify-between border-b border-[#FCE4EC] pb-3">
-                    <h3 class="text-base font-extrabold text-[#3D1824]">Pengaturan Avatar & Peran</h3>
-                    <button type="submit" class="px-5 py-2 bg-[#A64D69] text-white font-extrabold rounded-full">Simpan Avatar</button>
-                </div>
-                <div class="flex gap-3 flex-wrap">
-                    @foreach(['Risa', 'PeachGlow', 'RoseBerry', 'SweetMochi', 'TokyoSky'] as $seed)
-                        @php $url = "https://api.dicebear.com/9.x/lorelei/svg?seed={$seed}&backgroundColor=ffd5dc"; @endphp
-                        <label class="cursor-pointer">
-                            <input type="radio" name="avatar_choice" value="{{ $url }}" class="hidden peer">
-                            <img src="{{ $url }}" class="w-14 h-14 rounded-2xl border-2 border-[#F8BBD0] peer-checked:border-[#A64D69] peer-checked:scale-105 transition">
-                        </label>
-                    @endforeach
-                </div>
-                <div class="p-4 rounded-2xl bg-[#FCE4EC] flex items-center justify-between">
-                    <div>
-                        <p class="font-extrabold text-[#3D1824]">Ingin membuka Pre-Order sendiri?</p>
-                        <p class="text-[11px] text-[#7A4958]">Ajukan verifikasi KTP/Paspor dan rute perjalanan Anda.</p>
-                    </div>
-                    <a href="{{ route('jastiper.apply') }}" class="px-4 py-2 bg-[#A64D69] text-white font-extrabold rounded-full">Jadi Jastiper</a>
-                </div>
-            </div>
+         <div id="tabPanel-akun" class="profile-panel hidden space-y-5">
+             <div class="flex items-center justify-between border-b border-[#FCE4EC] pb-3">
+                 <h3 class="text-base font-extrabold text-[#3D1824]">Pengaturan Foto Profil & Akun</h3>
+                 <button type="submit" class="px-5 py-2 bg-[#A64D69] hover:bg-[#88334E] text-white font-extrabold rounded-full">Simpan Perubahan</button>
+             </div>
+
+             <!-- Upload Foto dari Laptop/HP dengan Live Preview -->
+             <div class="p-4 rounded-2xl bg-[#FFF7FA] border border-[#F8BBD0] flex flex-col sm:flex-row items-center gap-4">
+                 <img id="buyerAvatarPreview" src="{{ $user['avatar'] }}" class="w-16 h-16 rounded-2xl object-cover border-2 border-[#A64D69] bg-white">
+                 <div class="space-y-1.5 flex-1">
+                     <label class="block font-extrabold text-[#3D1824]">Unggah Foto Profil dari Perangkat (JPG/PNG/WEBP, Maks 3MB)</label>
+                     <input type="file" name="avatar_file" accept="image/*" onchange="previewImage(this, 'buyerAvatarPreview')" class="w-full text-xs bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
+                 </div>
+             </div>
+
+             <div>
+                 <p class="font-bold mb-2 text-[#7A4958]">Atau Pilih Karakter Avatar:</p>
+                 <div class="flex gap-3 flex-wrap">
+                     @foreach(['Risa', 'PeachGlow', 'RoseBerry', 'SweetMochi', 'TokyoSky'] as $seed)
+                         @php $url = "https://api.dicebear.com/9.x/lorelei/svg?seed={$seed}&backgroundColor=ffd5dc"; @endphp
+                         <label class="cursor-pointer">
+                             <input type="radio" name="avatar_choice" value="{{ $url }}" onchange="document.getElementById('buyerAvatarPreview').src=this.value" class="hidden peer">
+                             <img src="{{ $url }}" class="w-14 h-14 rounded-2xl border-2 border-[#F8BBD0] peer-checked:border-[#A64D69] peer-checked:scale-105 transition">
+                         </label>
+                     @endforeach
+                 </div>
+             </div>
+
+             <div class="p-4 rounded-2xl bg-[#FCE4EC] flex items-center justify-between">
+                 <div>
+                     <p class="font-extrabold text-[#3D1824]">Ingin membuka Pre-Order sendiri?</p>
+                     <p class="text-[11px] text-[#7A4958]">Ajukan verifikasi KTP/Paspor dan rute perjalanan Anda.</p>
+                 </div>
+                 <a href="{{ route('jastiper.apply') }}" class="px-4 py-2 bg-[#A64D69] text-white font-extrabold rounded-full">Jadi Jastiper</a>
+             </div>
+         </div>
 
             <!-- TAB 6: Makanan Favorit -->
             <div id="tabPanel-favorit" class="profile-panel hidden space-y-4">
@@ -180,5 +194,14 @@ function switchProfileTab(key) {
     });
     document.getElementById('tabBtn-' + key).className = 'w-full text-left px-4 py-3 rounded-2xl transition bg-[#FCE4EC] text-[#9E3B5A] font-extrabold';
 }
+
+function previewImage(input, targetId) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => document.getElementById(targetId).src = e.target.result;
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
 </script>
 @endsection

@@ -1,6 +1,7 @@
 @extends('layouts.app')
 @section('content')
 <div class="max-w-lg mx-auto bg-white p-8 rounded-[2rem] border border-[#F8BBD0] shadow-sm space-y-6">
+    <!-- Tab Switcher Pembeli vs Jastiper -->
     <div class="grid grid-cols-2 gap-2 p-1.5 rounded-full bg-[#FCE4EC]">
         <a href="{{ route('auth', ['role' => 'buyer', 'mode' => $mode]) }}" class="py-2 text-center text-xs font-extrabold rounded-full transition {{ $role === 'buyer' ? 'bg-[#A64D69] text-white shadow-sm' : 'text-[#7A2E47]' }}">
             Akun Pembeli
@@ -12,56 +13,72 @@
 
     <div class="text-center space-y-1">
         <h1 class="font-serif-title text-2xl font-bold text-[#4A1D2C]">
-            {{ $mode === 'signup' ? 'Daftar Akun TitipGo' : 'Masuk ke TitipGo' }}
+            {{ $mode === 'signup' ? 'Daftar Akun ' . ($role === 'jastiper' ? 'Jastiper' : 'Pembeli') : 'Masuk ke Akun ' . ($role === 'jastiper' ? 'Jastiper' : 'Pembeli') }}
         </h1>
-        <p class="text-xs text-[#8E5668]">Lengkapi identitas, alamat lengkap, dan kata sandi terverifikasi untuk melanjutkan</p>
+        <p class="text-xs text-[#8E5668]">
+            {{ $mode === 'signup' ? 'Lengkapi identitas, alamat lengkap, dan kata sandi terverifikasi' : 'Masukkan Nama, Email (@gmail.com), dan Kata Sandi Anda' }}
+        </p>
     </div>
 
     <form action="{{ route('auth.submit') }}" method="POST" id="strictAuthForm" class="space-y-4 text-xs">
         @csrf
         <input type="hidden" name="role" value="{{ $role }}">
+        <input type="hidden" name="mode" value="{{ $mode }}">
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        @if($mode === 'login')
+            <!-- MODE LOG IN: Cukup Nama, Email (@gmail.com), & Password -->
             <div>
                 <label class="block font-bold mb-1 text-[#4A1D2C]">Nama Lengkap *</label>
                 <input type="text" name="name" value="{{ old('name') }}" placeholder="Contoh: Risa Panjaitan" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
             </div>
+
             <div>
-                <label class="block font-bold mb-1 text-[#4A1D2C]">Nomor Telepon / WA *</label>
-                <input type="text" name="phone" value="{{ old('phone') }}" placeholder="+62 812-xxxx-xxxx" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
+                <label class="block font-bold mb-1 text-[#4A1D2C]">Email (Wajib @gmail.com) *</label>
+                <input type="email" name="email" id="emailInput" value="{{ old('email') }}" pattern="^[a-zA-Z0-9._%+\-]+@gmail\.com$" title="Email wajib menggunakan domain @gmail.com" placeholder="namaakun@gmail.com" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
             </div>
-        </div>
+        @else
+            <!-- MODE SIGN UP: Nama, No. HP, Email (@gmail.com), & Alamat Lengkap -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block font-bold mb-1 text-[#4A1D2C]">Nama Lengkap *</label>
+                    <input type="text" name="name" value="{{ old('name') }}" placeholder="Contoh: Risa Panjaitan" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
+                </div>
+                <div>
+                    <label class="block font-bold mb-1 text-[#4A1D2C]">Nomor Telepon / WA *</label>
+                    <input type="text" name="phone" value="{{ old('phone') }}" placeholder="+62 812-xxxx-xxxx" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
+                </div>
+            </div>
 
-        <div>
-            <label class="block font-bold mb-1 text-[#4A1D2C]">Email (Wajib @gmail.com) *</label>
-            <input type="email" name="email" id="emailInput" value="{{ old('email') }}" pattern="^[a-zA-Z0-9._%+\-]+@gmail\.com$" title="Email wajib menggunakan domain @gmail.com" placeholder="namaakun@gmail.com" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
-            <p id="emailHint" class="text-[11px] text-[#8E5668] mt-1">Hanya menerima alamat email dengan domain <strong>@gmail.com</strong>.</p>
-        </div>
-
-        <!-- Alamat Lengkap: Jalan, Kota, Provinsi, Kode Pos -->
-        <div class="p-4 rounded-2xl bg-[#FFF7FA] border border-[#FCE4EC] space-y-3">
-            <p class="font-extrabold text-[#7A2E47] flex items-center gap-1.5"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Alamat Lengkap Domisili *</p>
             <div>
-                <label class="block font-bold mb-1">Nama Jalan, Nomor Rumah, Kecamatan *</label>
-                <input type="text" name="street" value="{{ old('street') }}" placeholder="Jl. Sisingamangaraja No. 12, Kec. Laguboti" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3.5 py-2">
+                <label class="block font-bold mb-1 text-[#4A1D2C]">Email (Wajib @gmail.com) *</label>
+                <input type="email" name="email" id="emailInput" value="{{ old('email') }}" pattern="^[a-zA-Z0-9._%+\-]+@gmail\.com$" title="Email wajib menggunakan domain @gmail.com" placeholder="namaakun@gmail.com" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
+                <p class="text-[11px] text-[#8E5668] mt-1">Hanya menerima alamat email dengan domain <strong>@gmail.com</strong>.</p>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <div>
-                    <label class="block font-bold mb-1">Kota / Kabupaten *</label>
-                    <input type="text" name="city" value="{{ old('city') }}" placeholder="Kab. Toba" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
-                </div>
-                <div>
-                    <label class="block font-bold mb-1">Provinsi *</label>
-                    <input type="text" name="province" value="{{ old('province') }}" placeholder="Sumatera Utara" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
-                </div>
-                <div>
-                    <label class="block font-bold mb-1">Kode Pos (5 Digit) *</label>
-                    <input type="text" name="postal_code" value="{{ old('postal_code') }}" pattern="[0-9]{5}" maxlength="5" placeholder="22381" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
-                </div>
-            </div>
-        </div>
 
-        <!-- Kata Sandi dengan Validasi Kompleks -->
+            <div class="p-4 rounded-2xl bg-[#FFF7FA] border border-[#FCE4EC] space-y-3">
+                <p class="font-extrabold text-[#7A2E47] flex items-center gap-1.5"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Alamat Lengkap Domisili *</p>
+                <div>
+                    <label class="block font-bold mb-1">Nama Jalan, Nomor Rumah, Kecamatan *</label>
+                    <input type="text" name="street" value="{{ old('street') }}" placeholder="Jl. Sisingamangaraja No. 12, Kec. Laguboti" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3.5 py-2">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                        <label class="block font-bold mb-1">Kota / Kabupaten *</label>
+                        <input type="text" name="city" value="{{ old('city') }}" placeholder="Kab. Toba" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block font-bold mb-1">Provinsi *</label>
+                        <input type="text" name="province" value="{{ old('province') }}" placeholder="Sumatera Utara" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block font-bold mb-1">Kode Pos (5 Digit) *</label>
+                        <input type="text" name="postal_code" value="{{ old('postal_code') }}" pattern="[0-9]{5}" maxlength="5" placeholder="22381" required class="w-full bg-white border border-[#F8BBD0] rounded-xl px-3 py-2">
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        <!-- Kata Sandi dengan Validasi Kompleks (Berlaku untuk Log In & Sign Up) -->
         <div>
             <label class="block font-bold mb-1 text-[#4A1D2C]">Kata Sandi *</label>
             <input type="password" name="password" id="passwordInput" placeholder="Minimal 8 karakter kombinasi lengkap" required class="w-full border border-[#F8BBD0] focus:border-[#A64D69] focus:outline-none rounded-2xl px-4 py-2.5">
@@ -75,8 +92,8 @@
             </div>
         </div>
 
-        <button type="submit" id="submitAuthBtn" class="w-full py-3.5 bg-[#A64D69] hover:bg-[#88334E] text-white font-extrabold text-xs rounded-full shadow transition">
-            {{ $mode === 'signup' ? 'Daftar & Lanjutkan' : 'Masuk & Lanjutkan' }}
+        <button type="submit" class="w-full py-3.5 {{ $role === 'jastiper' ? 'bg-[#88334E] hover:bg-[#6E263D]' : 'bg-[#A64D69] hover:bg-[#88334E]' }} text-white font-extrabold text-xs rounded-full shadow transition">
+            {{ $mode === 'signup' ? 'Daftar & Lanjutkan' : 'Masuk Sekarang' }}
         </button>
     </form>
 

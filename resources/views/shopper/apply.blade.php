@@ -22,6 +22,17 @@
         <p class="text-xs opacity-90 max-w-2xl leading-relaxed">Data ini membantu kami menjaga keamanan transaksi dan mencocokkan perjalananmu dengan kebutuhan Pembeli.</p>
     </div>
 
+    @if($errors->any())
+        <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-2xl text-xs font-bold space-y-1">
+            <p>Periksa kembali isian formulir Anda:</p>
+            <ul class="list-disc list-inside font-normal">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <form action="{{ route('jastiper.apply.submit') }}" method="POST" class="space-y-6 text-xs">
         @csrf
 

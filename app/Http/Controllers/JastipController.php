@@ -27,7 +27,7 @@ class JastipController extends Controller
         ];
     }
 
-    // 1. Landing & Auth (Validasi Ketat @gmail.com, Alamat Lengkap, & Password Kompleks)
+    // 1. Landing & Auth (Log In: Nama, Email @gmail.com, Password | Sign Up: Lengkap)
     public function landing()
     {
         $featuredItems = JastipItem::latest()->take(4)->get();
@@ -43,15 +43,12 @@ class JastipController extends Controller
 
     public function authSubmit(Request $request)
     {
-        $request->validate([
-            'name'        => 'required|string|max:100',
-            'email'       => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
-            'phone'       => 'required|string|max:30',
-            'street'      => 'required|string|max:150',
-            'city'        => 'required|string|max:100',
-            'province'    => 'required|string|max:100',
-            'postal_code' => ['required', 'regex:/^[0-9]{5}$/'],
-            'password'    => [
+        $mode = $request->input('mode', 'login');
+
+        $rules = [
+            'name'     => 'required|string|max:100',
+            'email'    => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
+            'password' => [
                 'required',
                 'string',
                 'min:8',
@@ -60,8 +57,18 @@ class JastipController extends Controller
                 'regex:/[0-9]/',
                 'regex:/[\W_]/',
             ],
-            'role'        => 'required|in:buyer,jastiper',
-        ], [
+            'role'     => 'required|in:buyer,jastiper',
+        ];
+
+        if ($mode === 'signup') {
+            $rules['phone']       = 'required|string|max:30';
+            $rules['street']      = 'required|string|max:150';
+            $rules['city']        = 'required|string|max:100';
+            $rules['province']    = 'required|string|max:100';
+            $rules['postal_code'] = ['required', 'regex:/^[0-9]{5}$/'];
+        }
+
+        $request->validate($rules, [
             'email.regex'       => 'Email wajib menggunakan domain @gmail.com (selain @gmail.com tidak diperbolehkan).',
             'postal_code.regex' => 'Kode pos wajib terdiri dari 5 digit angka.',
             'password.min'      => 'Kata sandi minimal terdiri dari 8 karakter.',
@@ -69,19 +76,34 @@ class JastipController extends Controller
         ]);
 
         $accountName = ucwords(strtolower(trim($request->name)));
-        $fullAddress = "{$request->street}, {$request->city}, {$request->province} {$request->postal_code}";
         $isJastiper  = ($request->role === 'jastiper');
+
+        if ($mode === 'signup') {
+            $phone       = trim($request->phone);
+            $street      = trim($request->street);
+            $city        = trim($request->city);
+            $province    = trim($request->province);
+            $postalCode  = trim($request->postal_code);
+            $fullAddress = "{$street}, {$city}, {$province} {$postalCode}";
+        } else {
+            $phone       = session('user_phone', '0812-6489-2026');
+            $street      = session('user_street', 'Sitoluama');
+            $city        = session('user_city', 'Laguboti, Toba');
+            $province    = session('user_province', 'Sumatera Utara');
+            $postalCode  = session('user_postal_code', '22381');
+            $fullAddress = session('user_address', 'Sitoluama, Laguboti, Toba, Sumatera Utara 22381');
+        }
 
         session([
             'is_logged_in'     => true,
             'is_jastiper'      => $isJastiper,
             'user_name'        => $accountName,
             'user_email'       => strtolower(trim($request->email)),
-            'user_phone'       => trim($request->phone),
-            'user_street'      => trim($request->street),
-            'user_city'        => trim($request->city),
-            'user_province'    => trim($request->province),
-            'user_postal_code' => trim($request->postal_code),
+            'user_phone'       => $phone,
+            'user_street'      => $street,
+            'user_city'        => $city,
+            'user_province'    => $province,
+            'user_postal_code' => $postalCode,
             'user_address'     => $fullAddress,
             'user_birthdate'   => '14 Februari 2002',
             'user_gender'      => 'Perempuan',
@@ -90,7 +112,7 @@ class JastipController extends Controller
         session()->save();
 
         return redirect()->route('location.setup', ['next' => $isJastiper ? 'jastiper' : 'buyer'])
-            ->with('success', "Akun {$accountName} berhasil diverifikasi! Silakan konfirmasi titik lokasi.");
+            ->with('success', "Selamat datang, {$accountName}! Silakan konfirmasi titik lokasi Anda.");
     }
 
     // 2. Halaman Menyalakan Lokasi & Welcome Screen
@@ -312,24 +334,38 @@ class JastipController extends Controller
 
     public function updateBuyerProfile(Request $request)
     {
+        $request->validate([
+            'avatar_file' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:3072',
+        ]);
+
+        $avatar = session('user_avatar');
+        if ($request->hasFile('avatar_file')) {
+            $path   = $request->file('avatar_file')->store('avatars', 'public');
+            $avatar = asset('storage/' . $path);
+        } elseif ($request->filled('avatar_choice')) {
+            $avatar = $request->input('avatar_choice');
+        }
+
+        $street     = $request->input('street', session('user_street', ''));
+        $city       = $request->input('city', session('user_city', ''));
+        $province   = $request->input('province', session('user_province', ''));
+        $postalCode = $request->input('postal_code', session('user_postal_code', ''));
+
         session([
             'user_name'        => $request->input('name', session('user_name')),
             'user_phone'       => $request->input('phone', session('user_phone')),
             'user_birthdate'   => $request->input('birthdate', session('user_birthdate')),
             'user_gender'      => $request->input('gender', session('user_gender')),
-            'user_street'      => $request->input('street', session('user_street')),
-            'user_city'        => $request->input('city', session('user_city')),
-            'user_province'    => $request->input('province', session('user_province')),
-            'user_postal_code' => $request->input('postal_code', session('user_postal_code')),
-            'user_address'     => ($request->input('street', session('user_street'))) . ', ' . ($request->input('city', session('user_city'))) . ', ' . ($request->input('province', session('user_province'))) . ' ' . ($request->input('postal_code', session('user_postal_code'))),
+            'user_street'      => $street,
+            'user_city'        => $city,
+            'user_province'    => $province,
+            'user_postal_code' => $postalCode,
+            'user_address'     => trim("{$street}, {$city}, {$province} {$postalCode}", ', '),
+            'user_avatar'      => $avatar,
         ]);
 
-        if ($request->filled('avatar_choice')) {
-            session(['user_avatar' => $request->avatar_choice]);
-        }
-
         session()->save();
-        return back()->with('success', 'Pengaturan profil Anda berhasil diperbarui!');
+        return back()->with('success', 'Profil dan foto akun Pembeli berhasil diperbarui!');
     }
 
     // 4. ALUR SATU ARAH: Pembeli Mendaftar Jadi Jastiper (3 Bagian Form Partner Jastiper)
@@ -349,25 +385,26 @@ class JastipController extends Controller
             'email'          => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
             'phone'          => 'required|string|max:30',
             'id_type'        => 'required|in:KTP,Paspor',
-            'id_number'      => 'required|string|min:6|max:30',
+            'id_number'      => 'required|string|min:4|max:30',
             'full_address'   => 'required|string|max:255',
             'city'           => 'required|string|max:100',
             'province'       => 'required|string|max:100',
             'destination'    => 'required|string|max:80',
             'departure_date' => 'required|date',
             'return_date'    => 'required|date|after_or_equal:departure_date',
-            'capacity_kg'    => 'required|integer|min:1|max:50',
+            'capacity_kg'    => 'required|integer|min:1|max:100',
             'experience'     => 'required|string|max:100',
             'categories'     => 'required|array|min:1',
-            'motivation'     => 'required|string|min:5',
+            'motivation'     => 'required|string|min:3',
             'bank_name'      => 'required|string|max:50',
             'bank_holder'    => 'required|string|max:100',
-            'bank_account'   => 'required|string|min:6|max:30',
+            'bank_account'   => 'required|string|min:4|max:30',
             'agree_customs'  => 'accepted',
         ], [
-            'email.regex'            => 'Email Jastiper wajib menggunakan domain @gmail.com.',
-            'categories.required'    => 'Pilih minimal satu kategori makanan yang dapat dibawa.',
-            'agree_customs.accepted' => 'Anda wajib menyetujui pernyataan aturan Bea Cukai dan Karantina TitipGo.',
+            'email.regex'                => 'Email Jastiper wajib menggunakan domain @gmail.com.',
+            'return_date.after_or_equal' => 'Tanggal kembali tidak boleh lebih awal dari tanggal berangkat.',
+            'categories.required'        => 'Pilih minimal satu kategori makanan yang dapat dibawa.',
+            'agree_customs.accepted'     => 'Centang kotak persetujuan aturan Bea Cukai dan Karantina.',
         ]);
 
         try {
@@ -381,26 +418,29 @@ class JastipController extends Controller
             $notif = new Notification();
             $notif->role    = 'jastiper';
             $notif->title   = 'Akun Partner Jastiper Aktif!';
-            $notif->message = "Selamat {$request->name}, pengajuan rute {$request->destination} ({$request->capacity_kg} kg) telah diverifikasi. Anda kini dapat membuka Pre-Order!";
+            $notif->message = "Selamat {$request->name}, rute {$request->destination} ({$request->capacity_kg} kg) siap digunakan untuk membuka PO.";
             $notif->save();
         } catch (\Throwable $e) {
-            return back()->withInput()->with('error', 'Terjadi kendala saat menyimpan pengajuan: ' . $e->getMessage());
+            // Tetap lanjutkan aktivasi sesi Jastiper meskipun tabel log opsional mengalami kendala
         }
 
         session([
-            'is_logged_in'  => true,
-            'is_jastiper'   => true,
-            'user_name'     => trim($request->name),
-            'user_email'    => strtolower(trim($request->email)),
-            'user_phone'    => trim($request->phone),
-            'user_city'     => trim($request->city),
-            'user_province' => trim($request->province),
-            'user_address'  => trim($request->full_address),
+            'is_logged_in'      => true,
+            'is_jastiper'       => true,
+            'user_name'         => trim($request->name),
+            'user_email'        => strtolower(trim($request->email)),
+            'user_phone'        => trim($request->phone),
+            'user_city'         => trim($request->city),
+            'user_province'     => trim($request->province),
+            'user_address'      => trim($request->full_address),
+            'jastiper_route'    => $request->destination,
+            'jastiper_capacity' => $request->capacity_kg,
+            'jastiper_id_info'  => "{$request->id_type} • {$request->id_number}",
         ]);
         session()->save();
 
         return redirect()->route('jastiper.dashboard')
-            ->with('success', 'Selamat! Pengajuan Jastiper Anda diterima dan akun kini beralih ke Mode Partner Jastiper.');
+            ->with('success', "Selamat {$request->name}! Akun Anda telah resmi aktif sebagai Partner Jastiper.");
     }
 
     // 5. POV JASTIPER: Dashboard, Grafik, & Pencairan Dana
@@ -564,7 +604,7 @@ class JastipController extends Controller
         return back()->with('success', "Status pesanan #{$order->order_code} berhasil diperbarui ke tahap {$step}!");
     }
 
-    // 8. POV JASTIPER: Notifikasi & Profil Rekening Bank
+    // 8. POV JASTIPER: Notifikasi, Profil, Foto & Rekening Bank
     public function shopperNotifications()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
@@ -579,6 +619,37 @@ class JastipController extends Controller
         $user         = $this->getDefaultUser();
         $bankAccounts = BankAccount::latest()->get();
         return view('shopper.profile', compact('user', 'bankAccounts'));
+    }
+
+    public function updateShopperProfile(Request $request)
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $request->validate([
+            'avatar_file' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:3072',
+        ]);
+
+        $avatar = session('user_avatar');
+        if ($request->hasFile('avatar_file')) {
+            $path   = $request->file('avatar_file')->store('avatars', 'public');
+            $avatar = asset('storage/' . $path);
+        } elseif ($request->filled('avatar_choice')) {
+            $avatar = $request->input('avatar_choice');
+        }
+
+        session([
+            'user_name'         => $request->input('name', session('user_name')),
+            'user_phone'        => $request->input('phone', session('user_phone')),
+            'user_city'         => $request->input('city', session('user_city')),
+            'user_province'     => $request->input('province', session('user_province')),
+            'user_address'      => $request->input('address', session('user_address')),
+            'jastiper_route'    => $request->input('jastiper_route', session('jastiper_route', 'Jepang')),
+            'jastiper_capacity' => $request->input('jastiper_capacity', session('jastiper_capacity', 10)),
+            'user_avatar'       => $avatar,
+        ]);
+
+        session()->save();
+        return back()->with('success', 'Profil & foto Partner Jastiper berhasil diperbarui!');
     }
 
     public function storeBankAccount(Request $request)

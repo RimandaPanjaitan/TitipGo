@@ -30,6 +30,7 @@ Route::prefix('buyer')->group(function () {
     Route::post('/profile', [JastipController::class, 'updateBuyerProfile'])->name('buyer.profile.update');
 });
 
+
 // POV Jastiper
 Route::prefix('jastiper')->group(function () {
     Route::get('/dashboard', [JastipController::class, 'shopperDashboard'])->name('jastiper.dashboard');
@@ -40,5 +41,6 @@ Route::prefix('jastiper')->group(function () {
     Route::post('/withdraw', [JastipController::class, 'withdrawFunds'])->name('jastiper.withdraw');
     Route::get('/notifications', [JastipController::class, 'shopperNotifications'])->name('jastiper.notifications');
     Route::get('/profile', [JastipController::class, 'shopperProfile'])->name('jastiper.profile');
+    Route::post('/profile', [JastipController::class, 'updateShopperProfile'])->name('jastiper.profile.update');
     Route::post('/bank-account', [JastipController::class, 'storeBankAccount'])->name('jastiper.bank.store');
 });
