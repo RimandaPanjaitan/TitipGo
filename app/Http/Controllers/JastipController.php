@@ -193,36 +193,43 @@ class JastipController extends Controller
 
     public function createOrder(Request $request, $id)
     {
-        $validated = $request->validate([
+        $request->validate([
             'quantity'         => 'required|integer|min:1',
-            'buyer_name'       => 'required|string|max:100',
+            'buyer_name'       => 'nullable|string|max:100',
             'buyer_phone'      => 'required|string|max:30',
             'shipping_address' => 'required|string|max:255',
         ]);
 
+        $buyerName  = trim((string) ($request->input('buyer_name') ?: session('user_name') ?: 'Pelanggan TitipGo'));
+        $buyerEmail = session('user_email', 'pelanggan@titipgo.com');
+        $qty        = (int) $request->input('quantity', 1);
+
         $order = null;
         try {
-            DB::transaction(function () use ($validated, $id, &$order) {
+            DB::transaction(function () use ($request, $id, $buyerName, $buyerEmail, $qty, &$order) {
                 $item = JastipItem::where('id', $id)->lockForUpdate()->firstOrFail();
-                if ($item->quota < $validated['quantity']) {
-                    throw new \RuntimeException("Kuota bagasi tersisa {$item->quota} slot.");
-                }
-                $item->decrement('quota', $validated['quantity']);
 
-                $subtotal = $item->price * $validated['quantity'];
+                if ($item->quota < $qty) {
+                    throw new \RuntimeException("Maaf, kuota bagasi hanya tersisa {$item->quota} slot.");
+                }
+
+                $item->decrement('quota', $qty);
+
+                $subtotal = $item->price * $qty;
                 $fee = 5000;
 
                 $order = Order::create([
                     'jastip_item_id'   => $item->id,
                     'order_code'       => 'TG-' . strtoupper(Str::random(6)),
-                    'buyer_name'       => $validated['buyer_name'],
-                    'buyer_email'      => session['user_email'],
-                    'buyer_phone'      => $validated['buyer_phone'],
-                    'shipping_address' => $validated['shipping_address'],
-                    'quantity'         => $validated['quantity'],
+                    'buyer_name'       => $buyerName,
+                    'buyer_email'      => $buyerEmail,
+                    'buyer_phone'      => $request->input('buyer_phone'),
+                    'shipping_address' => $request->input('shipping_address'),
+                    'quantity'         => $qty,
                     'subtotal'         => $subtotal,
                     'service_fee'      => $fee,
                     'total_price'      => $subtotal + $fee,
+                    'payment_method'   => 'Menunggu Pilihan',
                     'payment_status'   => 'Menunggu Pembayaran',
                     'step_status'      => 1,
                     'status_label'     => '1. Pesanan Diterima & Dibeli di Negara Asal',
@@ -231,14 +238,18 @@ class JastipController extends Controller
                 Notification::create([
                     'role'    => 'jastiper',
                     'title'   => "Pesanan Baru #{$order->order_code}",
-                    'message' => "{$validated['buyer_name']} menitip {$validated['quantity']}x {$item->name} ({$item->origin_country}).",
+                    'message' => "{$buyerName} menitip {$qty}x {$item->name} ({$item->origin_country}).",
                 ]);
             });
 
+            if (!$order) {
+                return back()->with('error', 'Gagal memproses pesanan. Silakan coba lagi.');
+            }
+
             return redirect()->route('buyer.payment', $order->id)
-                ->with('success', 'Pesanan berhasil dibuat! Silakan pilih metode pembayaran untuk menyelesaikan transaksi.');
-        } catch (\Exception $e) {
-            return back()->with('error', $e->getMessage());
+                ->with('success', 'Pesanan berhasil dibuat! Silakan pilih metode pembayaran.');
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Gagal membuat pesanan: ' . $e->getMessage());
         }
     }
 
