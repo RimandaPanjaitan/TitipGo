@@ -46,50 +46,141 @@ class JastipController extends Controller
 
     public function authSubmit(Request $request)
     {
-        $rawInput = trim((string) ($request->input('identifier') ?: $request->input('name') ?: ''));
+        $request->validate([
+            'name'        => 'required|string|max:100',
+            'email'       => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
+            'phone'       => 'required|string|max:30',
+            'street'      => 'required|string|max:150',
+            'city'        => 'required|string|max:100',
+            'province'    => 'required|string|max:100',
+            'postal_code' => ['required', 'regex:/^[0-9]{5}$/'],
+            'password'    => [
+                'required',
+                'string',
+                'min:8',
+                'regex:/[a-z]/',      // minimal 1 huruf kecil
+                'regex:/[A-Z]/',      // minimal 1 huruf besar
+                'regex:/[0-9]/',      // minimal 1 angka
+                'regex:/[\W_]/',      // minimal 1 karakter spesial
+            ],
+            'role'        => 'required|in:buyer,jastiper',
+        ], [
+            'email.regex'       => 'Email wajib menggunakan domain @gmail.com (selain @gmail.com tidak diperbolehkan).',
+            'postal_code.regex' => 'Kode pos wajib terdiri dari 5 digit angka.',
+            'password.min'      => 'Kata sandi minimal terdiri dari 8 karakter.',
+            'password.regex'    => 'Kata sandi wajib memuat huruf besar, huruf kecil, angka, dan karakter spesial.',
+        ]);
 
-        if ($rawInput === '') {
-            return back()->with('error', 'Silakan masukkan nama akun, email, atau nomor telepon terlebih dahulu.');
-        }
-
-        if ($request->filled('name')) {
-            $accountName = ucwords(strtolower(trim($request->input('name'))));
-        } elseif (filter_var($rawInput, FILTER_VALIDATE_EMAIL)) {
-            $accountName = ucwords(str_replace(['.', '_', '-'], ' ', explode('@', $rawInput)[0]));
-        } else {
-            $accountName = ucwords(strtolower($rawInput));
-        }
-
-        $accountEmail = $request->filled('email')
-            ? trim($request->input('email'))
-            : (filter_var($rawInput, FILTER_VALIDATE_EMAIL)
-                ? $rawInput
-                : strtolower(preg_replace('/\s+/', '', $accountName)) . '@gmail.com');
-
-        $accountPhone = $request->filled('phone')
-            ? trim($request->input('phone'))
-            : (preg_match('/^[0-9+\-\s]{8,}$/', $rawInput) ? $rawInput : '0812-6489-2026');
-
-        $accountAddress = $request->filled('address')
-            ? trim($request->input('address'))
-            : 'Sitoluama, Laguboti, Toba, Sumatera Utara';
-
-        $role = $request->input('role', 'buyer');
-        $isJastiper = ($role === 'jastiper');
+        $accountName = ucwords(strtolower(trim($request->name)));
+        $fullAddress = "{$request->street}, {$request->city}, {$request->province} {$request->postal_code}";
+        $isJastiper  = ($request->role === 'jastiper');
 
         session([
-            'is_logged_in' => true,
-            'is_jastiper'  => $isJastiper,
-            'user_name'    => $accountName,
-            'user_email'   => $accountEmail,
-            'user_phone'   => $accountPhone,
-            'user_address' => $accountAddress,
-            'user_avatar'  => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
+            'is_logged_in'     => true,
+            'is_jastiper'      => $isJastiper,
+            'user_name'        => $accountName,
+            'user_email'       => strtolower(trim($request->email)),
+            'user_phone'       => trim($request->phone),
+            'user_street'      => trim($request->street),
+            'user_city'        => trim($request->city),
+            'user_province'    => trim($request->province),
+            'user_postal_code' => trim($request->postal_code),
+            'user_address'     => $fullAddress,
+            'user_birthdate'   => '14 Februari 2002',
+            'user_gender'      => 'Perempuan',
+            'user_avatar'      => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
         ]);
         session()->save();
 
         return redirect()->route('location.setup', ['next' => $isJastiper ? 'jastiper' : 'buyer'])
-            ->with('success', "Halo {$accountName}! Silakan konfirmasi lokasi Anda.");
+            ->with('success', "Akun {$accountName} berhasil diverifikasi! Silakan konfirmasi titik lokasi.");
+    }
+
+    public function updateBuyerProfile(Request $request)
+    {
+        session([
+            'user_name'        => $request->input('name', session('user_name')),
+            'user_phone'       => $request->input('phone', session('user_phone')),
+            'user_birthdate'   => $request->input('birthdate', session('user_birthdate')),
+            'user_gender'      => $request->input('gender', session('user_gender')),
+            'user_street'      => $request->input('street', session('user_street')),
+            'user_city'        => $request->input('city', session('user_city')),
+            'user_province'    => $request->input('province', session('user_province')),
+            'user_postal_code' => $request->input('postal_code', session('user_postal_code')),
+            'user_address'     => ($request->input('street', session('user_street'))) . ', ' . ($request->input('city', session('user_city'))) . ', ' . ($request->input('province', session('user_province'))) . ' ' . ($request->input('postal_code', session('user_postal_code'))),
+        ]);
+
+        if ($request->filled('avatar_choice')) {
+            session(['user_avatar' => $request->avatar_choice]);
+        }
+
+        session()->save();
+        return back()->with('success', 'Pengaturan profil Anda berhasil diperbarui!');
+    }
+
+    public function applyJastiperForm()
+    {
+        $user = $this->getDefaultUser();
+        return view('shopper.apply', compact('user'));
+    }
+
+    public function applyJastiperSubmit(Request $request)
+    {
+        $request->validate([
+            'name'               => 'required|string|max:100',
+            'email'              => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
+            'phone'              => 'required|string|max:30',
+            'id_type'            => 'required|in:KTP,Paspor',
+            'id_number'          => 'required|string|min:6|max:30',
+            'full_address'       => 'required|string|max:255',
+            'city'               => 'required|string|max:100',
+            'province'           => 'required|string|max:100',
+            'destination'        => 'required|string|max:80',
+            'departure_date'     => 'required|date',
+            'return_date'        => 'required|date|after_or_equal:departure_date',
+            'capacity_kg'        => 'required|integer|min:1|max:50',
+            'experience'         => 'required|string|max:100',
+            'categories'         => 'required|array|min:1',
+            'motivation'         => 'required|string|min:10',
+            'bank_name'          => 'required|string|max:50',
+            'bank_holder'        => 'required|string|max:100',
+            'bank_account'       => 'required|string|min:6|max:30',
+            'agree_customs'      => 'accepted',
+        ], [
+            'email.regex'            => 'Email Jastiper wajib menggunakan domain @gmail.com.',
+            'categories.required'    => 'Pilih minimal satu kategori makanan yang dapat dibawa.',
+            'agree_customs.accepted' => 'Anda wajib menyetujui pernyataan aturan Bea Cukai dan Karantina TitipGo.',
+        ]);
+
+        // Simpan rekening pencairan Jastiper secara otomatis
+        BankAccount::create([
+            'provider'       => $request->bank_name,
+            'account_number' => $request->bank_account,
+            'account_holder' => $request->bank_holder,
+            'is_primary'     => true,
+        ]);
+
+        Notification::create([
+            'role'    => 'jastiper',
+            'title'   => 'Akun Partner Jastiper Aktif!',
+            'message' => "Selamat {$request->name}, pengajuan rute {$request->destination} ({$request->capacity_kg} kg) telah diverifikasi. Anda kini dapat membuka Pre-Order!",
+        ]);
+
+        // Kunci peran secara permanen menjadi Jastiper
+        session([
+            'is_logged_in'  => true,
+            'is_jastiper'   => true,
+            'user_name'     => $request->name,
+            'user_email'    => $request->email,
+            'user_phone'    => $request->phone,
+            'user_city'     => $request->city,
+            'user_province' => $request->province,
+            'user_address'  => $request->full_address,
+        ]);
+        session()->save();
+
+        return redirect()->route('jastiper.dashboard')
+            ->with('success', "Selamat! Pengajuan Jastiper Anda diterima dan akun kini beralih ke Mode Partner Jastiper.");
     }
 
     // 2. Halaman Menyalakan Lokasi Setelah Login -> Arahkan ke Welcome Screen
@@ -313,38 +404,8 @@ class JastipController extends Controller
         return view('buyer.profile', compact('user'));
     }
 
-    // 8. PENGHUBUNG SATU ARAH: Form Daftar Jadi Jastiper (Tanpa Kendaraan/Plat Nomor)
-    public function applyJastiperForm()
-    {
-        if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
-        $user = $this->getDefaultUser();
-        return view('shopper.apply', compact('user'));
-    }
 
-    public function applyJastiperSubmit(Request $request)
-    {
-        $request->validate([
-            'jastiper_name'  => 'required|string|max:100',
-            'jastiper_phone' => 'required|string|max:30',
-            'jastiper_addr'  => 'required|string|max:255',
-            'travel_route'   => 'required|string|max:120',
-            'passport_id'    => 'required|string|max:50',
-        ]);
-
-        session([
-            'is_logged_in' => true,
-            'user_name'    => $accountName,
-            'user_email'   => $accountEmail,
-            'user_phone'   => $accountPhone,
-            'user_address' => $accountAddress,
-            'user_avatar'  => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
-        ]);
-
-        return redirect()->route('jastiper.dashboard')
-            ->with('success', 'Akun Anda resmi terverifikasi menjadi Jastiper! Mode Pembeli telah dinonaktifkan permanen.');
-    }
-
-    // 9. POV JASTIPER: Dashboard, Performa Mingguan, & Pencairan Dana
+    // 8. POV JASTIPER: Dashboard, Performa Mingguan, & Pencairan Dana
     public function shopperDashboard()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
@@ -393,7 +454,7 @@ class JastipController extends Controller
         return back()->with('success', "Dana Rp " . number_format($request->amount, 0, ',', '.') . " berhasil dicairkan ke {$bank->provider}!");
     }
 
-    // 10. POV JASTIPER: Kelola Katalog & Buka PO Baru (Upload Gambar + Deskripsi)
+    // 9. POV JASTIPER: Kelola Katalog & Buka PO Baru (Upload Gambar + Deskripsi)
     public function shopperCatalog()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
@@ -463,7 +524,7 @@ class JastipController extends Controller
         return back()->with('success', 'Produk & Open PO baru berhasil ditambahkan ke katalog!');
     }
 
-    // 11. POV JASTIPER: Kelola 4 Tahap Status Pesanan Berurutan (1 -> 2 -> 3 -> 4)
+    // 10. POV JASTIPER: Kelola 4 Tahap Status Pesanan Berurutan (1 -> 2 -> 3 -> 4)
     public function shopperOrders()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
@@ -507,7 +568,7 @@ class JastipController extends Controller
         return back()->with('success', "Pesanan #{$order->order_code} berlanjut ke tahap {$nextStep}!");
     }
 
-    // 12. POV JASTIPER: Halaman Notifikasi Terpisah & Profil Interaktif + Rekening Bank
+    // 11. POV JASTIPER: Halaman Notifikasi Terpisah & Profil Interaktif + Rekening Bank
     public function shopperNotifications()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');

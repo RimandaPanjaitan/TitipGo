@@ -1,32 +1,57 @@
 @extends('layouts.app')
 @section('content')
-<div class="max-w-4xl mx-auto space-y-5">
-    <h1 class="font-coquette text-2xl font-bold">Kelola Tahapan Pesanan (1 → 2 → 3 → 4)</h1>
-    @foreach($orders as $order)
-        <div class="bg-white p-6 rounded-3xl border border-[#F5B8C8] space-y-4">
-            <div class="flex flex-col sm:flex-row justify-between gap-2">
-                <div>
-                    <span class="text-xs font-extrabold text-[#C94A6E]">{{ $order->order_code }} • Pemesan: {{ $order->buyer_name }}</span>
-                    <h3 class="font-bold text-base">{{ $order->item->name }} ({{ $order->quantity }}x)</h3>
-                    <p class="text-xs opacity-75">Status Saat Ini: <strong>{{ $order->status_label }}</strong></p>
-                </div>
+<div class="max-w-5xl mx-auto space-y-6">
+    <div>
+        <h1 class="font-serif-title text-2xl sm:text-3xl font-bold text-[#3D1824]">Kelola Pesanan Pembeli (4 Tahap)</h1>
+        <p class="text-xs text-[#7A4958]">Perbarui progres pembelian dan pengantaran kurir lokal agar pembeli menerima notifikasi real-time.</p>
+    </div>
 
-                @if($order->step_status < 4)
-                    <form action="{{ route('jastiper.orders.advance', $order->id) }}" method="POST" class="flex flex-wrap items-center gap-2">
-                        @csrf @method('PATCH')
-                        @if($order->step_status == 2)
-                            <input type="text" name="courier_vehicle" placeholder="Jenis Kendaraan Lokal" required class="text-xs border border-[#F5B8C8] rounded-xl px-3 py-2">
-                            <input type="text" name="courier_plate" placeholder="Plat Nomor" required class="text-xs border border-[#F5B8C8] rounded-xl px-3 py-2 w-28">
-                        @endif
-                        <button type="submit" class="px-4 py-2 bg-[#E16B8C] hover:bg-[#C94A6E] text-white text-xs font-extrabold rounded-full">
-                            Lanjut ke Tahap {{ $order->step_status + 1 }} &rarr;
-                        </button>
-                    </form>
-                @else
-                    <span class="px-4 py-2 bg-emerald-50 text-emerald-700 text-xs font-extrabold rounded-full h-fit">Tahap 4 Selesai ✓</span>
-                @endif
+    @forelse($orders as $order)
+        <div class="bg-white p-6 rounded-3xl border border-[#F8BBD0] shadow-2xs space-y-4 text-xs">
+            <div class="flex flex-col sm:flex-row justify-between gap-2 border-b border-[#FCE4EC] pb-3">
+                <div>
+                    <span class="font-extrabold text-[#A64D69]">{{ $order->order_code }} • {{ $order->payment_status }}</span>
+                    <h3 class="text-base font-extrabold text-[#3D1824]">{{ $order->item->name }} ({{ $order->quantity }}x)</h3>
+                    <p class="text-[#7A4958]">Pemesan: <strong>{{ $order->buyer_name }}</strong> ({{ $order->buyer_phone }}) — {{ $order->shipping_address }}</p>
+                </div>
+                <div class="sm:text-right">
+                    <p class="font-black text-base text-[#8E3B56]">Rp {{ number_format($order->total_price, 0, ',', '.') }}</p>
+                    <span class="inline-block mt-1 px-3 py-1 rounded-full bg-[#FCE4EC] text-[#88334E] font-extrabold text-[11px]">{{ $order->status_label }}</span>
+                </div>
             </div>
+
+            <!-- Form Update Tahap Pengiriman -->
+            <form action="{{ route('jastiper.orders.status', $order->id) }}" method="POST" class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                @csrf
+                @method('PATCH')
+                <div class="sm:col-span-2">
+                    <label class="block font-bold mb-1">Pilih Tahap Pengiriman Terbaru</label>
+                    <select name="step_status" class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-3.5 py-2.5 font-bold">
+                        <option value="1" {{ $order->step_status == 1 ? 'selected' : '' }}>1. Pesanan Diterima & Dibeli di Negara Asal</option>
+                        <option value="2" {{ $order->step_status == 2 ? 'selected' : '' }}>2. Lolos Bea Cukai & Penerbangan ke Indonesia</option>
+                        <option value="3" {{ $order->step_status == 3 ? 'selected' : '' }}>3. Diantar Kurir Lokal ke Alamat Pembeli</option>
+                        <option value="4" {{ $order->step_status == 4 ? 'selected' : '' }}>4. Pesanan Tiba & Selesai</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold mb-1">Kendaraan Kurir (Tahap 3)</label>
+                    <input type="text" name="courier_vehicle" value="{{ $order->courier_vehicle ?? 'Honda Vario 160 Hitam' }}" class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-3.5 py-2.5">
+                </div>
+                <div class="flex gap-2">
+                    <div class="flex-1">
+                        <label class="block font-bold mb-1">Plat Nomor</label>
+                        <input type="text" name="courier_plate" value="{{ $order->courier_plate ?? 'BB 4821 XW' }}" class="w-full bg-[#FFF7FA] border border-[#F8BBD0] rounded-2xl px-3 py-2.5">
+                    </div>
+                    <button type="submit" class="px-4 py-2.5 bg-[#8E3B56] hover:bg-[#742D44] text-white font-extrabold rounded-2xl self-end">
+                        Update
+                    </button>
+                </div>
+            </form>
         </div>
-    @endforeach
+    @empty
+        <div class="bg-white p-8 rounded-3xl border border-[#F8BBD0] text-center text-xs text-[#7A4958]">
+            Belum ada pesanan masuk saat ini.
+        </div>
+    @endforelse
 </div>
 @endsection
