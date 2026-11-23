@@ -28,13 +28,10 @@ class JastipController extends Controller
     }
 
     // 1. Landing & Auth (Login / Sign Up Terpisah Pembeli vs Jastiper)
-    public function landing()
+   public function landing()
     {
-        if (session('is_jastiper')) {
-            return redirect()->route('jastiper.dashboard');
-        }
-        $featured = JastipItem::latest()->take(4)->get();
-        return view('landing', compact('featured'));
+        $featuredItems = JastipItem::latest()->take(4)->get();
+        return view('landing', compact('featuredItems'));
     }
 
     public function authForm(Request $request)
