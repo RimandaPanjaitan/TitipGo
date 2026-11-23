@@ -27,8 +27,8 @@ class JastipController extends Controller
         ];
     }
 
-    // 1. Landing & Auth (Login / Sign Up Terpisah Pembeli vs Jastiper)
-   public function landing()
+    // 1. Landing & Auth (Validasi Ketat @gmail.com, Alamat Lengkap, & Password Kompleks)
+    public function landing()
     {
         $featuredItems = JastipItem::latest()->take(4)->get();
         return view('landing', compact('featuredItems'));
@@ -55,10 +55,10 @@ class JastipController extends Controller
                 'required',
                 'string',
                 'min:8',
-                'regex:/[a-z]/',      // minimal 1 huruf kecil
-                'regex:/[A-Z]/',      // minimal 1 huruf besar
-                'regex:/[0-9]/',      // minimal 1 angka
-                'regex:/[\W_]/',      // minimal 1 karakter spesial
+                'regex:/[a-z]/',
+                'regex:/[A-Z]/',
+                'regex:/[0-9]/',
+                'regex:/[\W_]/',
             ],
             'role'        => 'required|in:buyer,jastiper',
         ], [
@@ -93,94 +93,7 @@ class JastipController extends Controller
             ->with('success', "Akun {$accountName} berhasil diverifikasi! Silakan konfirmasi titik lokasi.");
     }
 
-    public function updateBuyerProfile(Request $request)
-    {
-        session([
-            'user_name'        => $request->input('name', session('user_name')),
-            'user_phone'       => $request->input('phone', session('user_phone')),
-            'user_birthdate'   => $request->input('birthdate', session('user_birthdate')),
-            'user_gender'      => $request->input('gender', session('user_gender')),
-            'user_street'      => $request->input('street', session('user_street')),
-            'user_city'        => $request->input('city', session('user_city')),
-            'user_province'    => $request->input('province', session('user_province')),
-            'user_postal_code' => $request->input('postal_code', session('user_postal_code')),
-            'user_address'     => ($request->input('street', session('user_street'))) . ', ' . ($request->input('city', session('user_city'))) . ', ' . ($request->input('province', session('user_province'))) . ' ' . ($request->input('postal_code', session('user_postal_code'))),
-        ]);
-
-        if ($request->filled('avatar_choice')) {
-            session(['user_avatar' => $request->avatar_choice]);
-        }
-
-        session()->save();
-        return back()->with('success', 'Pengaturan profil Anda berhasil diperbarui!');
-    }
-
-    public function applyJastiperForm()
-    {
-        $user = $this->getDefaultUser();
-        return view('shopper.apply', compact('user'));
-    }
-
-    public function applyJastiperSubmit(Request $request)
-    {
-        $request->validate([
-            'name'               => 'required|string|max:100',
-            'email'              => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
-            'phone'              => 'required|string|max:30',
-            'id_type'            => 'required|in:KTP,Paspor',
-            'id_number'          => 'required|string|min:6|max:30',
-            'full_address'       => 'required|string|max:255',
-            'city'               => 'required|string|max:100',
-            'province'           => 'required|string|max:100',
-            'destination'        => 'required|string|max:80',
-            'departure_date'     => 'required|date',
-            'return_date'        => 'required|date|after_or_equal:departure_date',
-            'capacity_kg'        => 'required|integer|min:1|max:50',
-            'experience'         => 'required|string|max:100',
-            'categories'         => 'required|array|min:1',
-            'motivation'         => 'required|string|min:10',
-            'bank_name'          => 'required|string|max:50',
-            'bank_holder'        => 'required|string|max:100',
-            'bank_account'       => 'required|string|min:6|max:30',
-            'agree_customs'      => 'accepted',
-        ], [
-            'email.regex'            => 'Email Jastiper wajib menggunakan domain @gmail.com.',
-            'categories.required'    => 'Pilih minimal satu kategori makanan yang dapat dibawa.',
-            'agree_customs.accepted' => 'Anda wajib menyetujui pernyataan aturan Bea Cukai dan Karantina TitipGo.',
-        ]);
-
-        // Simpan rekening pencairan Jastiper secara otomatis
-        BankAccount::create([
-            'provider'       => $request->bank_name,
-            'account_number' => $request->bank_account,
-            'account_holder' => $request->bank_holder,
-            'is_primary'     => true,
-        ]);
-
-        Notification::create([
-            'role'    => 'jastiper',
-            'title'   => 'Akun Partner Jastiper Aktif!',
-            'message' => "Selamat {$request->name}, pengajuan rute {$request->destination} ({$request->capacity_kg} kg) telah diverifikasi. Anda kini dapat membuka Pre-Order!",
-        ]);
-
-        // Kunci peran secara permanen menjadi Jastiper
-        session([
-            'is_logged_in'  => true,
-            'is_jastiper'   => true,
-            'user_name'     => $request->name,
-            'user_email'    => $request->email,
-            'user_phone'    => $request->phone,
-            'user_city'     => $request->city,
-            'user_province' => $request->province,
-            'user_address'  => $request->full_address,
-        ]);
-        session()->save();
-
-        return redirect()->route('jastiper.dashboard')
-            ->with('success', "Selamat! Pengajuan Jastiper Anda diterima dan akun kini beralih ke Mode Partner Jastiper.");
-    }
-
-    // 2. Halaman Menyalakan Lokasi Setelah Login -> Arahkan ke Welcome Screen
+    // 2. Halaman Menyalakan Lokasi & Welcome Screen
     public function locationSetup(Request $request)
     {
         $next = $request->get('next', session('is_jastiper') ? 'jastiper' : 'buyer');
@@ -203,11 +116,11 @@ class JastipController extends Controller
         if ($request->next === 'jastiper') {
             session(['is_jastiper' => true]);
         }
+        session()->save();
 
         return redirect()->route('welcome.screen');
     }
 
-    // 2B. Halaman Welcome Setelah Login & Lokasi Aktif Sebelum Masuk Dashboard
     public function welcomeScreen()
     {
         $user = $this->getDefaultUser();
@@ -217,7 +130,7 @@ class JastipController extends Controller
         return view('welcome-screen', compact('user', 'isJastiper', 'destinationRoute'));
     }
 
-    // 3. POV PEMBELI: Dashboard & Grafik Pengeluaran
+    // 3. POV PEMBELI: Dashboard, Katalog, Detail Produk, Pemesanan, Pembayaran, Resi, Pelacakan, Profil
     public function buyerDashboard()
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
@@ -231,7 +144,6 @@ class JastipController extends Controller
         return view('buyer.dashboard', compact('user', 'items', 'orders', 'totalSpent', 'unreadNotif'));
     }
 
-    // 4. POV PEMBELI: Katalog Makanan Lolos Bea Cukai & Filter
     public function buyerCatalog(Request $request)
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
@@ -270,7 +182,6 @@ class JastipController extends Controller
         return view('buyer.catalog', compact('items', 'categories', 'countries'));
     }
 
-    // 5. POV PEMBELI: Detail Produk & Buat Pesanan
     public function productDetail($id)
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
@@ -289,7 +200,7 @@ class JastipController extends Controller
         ]);
 
         $buyerName  = trim((string) ($request->input('buyer_name') ?: session('user_name') ?: 'Pelanggan TitipGo'));
-        $buyerEmail = session('user_email', 'pelanggan@titipgo.com');
+        $buyerEmail = session('user_email', 'pelanggan@gmail.com');
         $qty        = (int) $request->input('quantity', 1);
 
         $order = null;
@@ -341,7 +252,6 @@ class JastipController extends Controller
         }
     }
 
-    // 6. POV PEMBELI: Pembayaran Setelah Pesanan Dibuat & Resi Digital
     public function paymentPage($orderId)
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
@@ -378,7 +288,6 @@ class JastipController extends Controller
         return view('buyer.receipt', compact('order'));
     }
 
-    // 7. POV PEMBELI: Lacak Pesanan (4 Tahap + Info Kendaraan Lokal) & Notifikasi & Profil
     public function trackOrders()
     {
         if (session('is_jastiper')) return redirect()->route('jastiper.dashboard');
@@ -401,26 +310,130 @@ class JastipController extends Controller
         return view('buyer.profile', compact('user'));
     }
 
+    public function updateBuyerProfile(Request $request)
+    {
+        session([
+            'user_name'        => $request->input('name', session('user_name')),
+            'user_phone'       => $request->input('phone', session('user_phone')),
+            'user_birthdate'   => $request->input('birthdate', session('user_birthdate')),
+            'user_gender'      => $request->input('gender', session('user_gender')),
+            'user_street'      => $request->input('street', session('user_street')),
+            'user_city'        => $request->input('city', session('user_city')),
+            'user_province'    => $request->input('province', session('user_province')),
+            'user_postal_code' => $request->input('postal_code', session('user_postal_code')),
+            'user_address'     => ($request->input('street', session('user_street'))) . ', ' . ($request->input('city', session('user_city'))) . ', ' . ($request->input('province', session('user_province'))) . ' ' . ($request->input('postal_code', session('user_postal_code'))),
+        ]);
 
-    // 8. POV JASTIPER: Dashboard, Performa Mingguan, & Pencairan Dana
+        if ($request->filled('avatar_choice')) {
+            session(['user_avatar' => $request->avatar_choice]);
+        }
+
+        session()->save();
+        return back()->with('success', 'Pengaturan profil Anda berhasil diperbarui!');
+    }
+
+    // 4. ALUR SATU ARAH: Pembeli Mendaftar Jadi Jastiper (3 Bagian Form Partner Jastiper)
+    public function applyJastiperForm()
+    {
+        if (session('is_jastiper')) {
+            return redirect()->route('jastiper.dashboard');
+        }
+        $user = $this->getDefaultUser();
+        return view('shopper.apply', compact('user'));
+    }
+
+    public function applyJastiperSubmit(Request $request)
+    {
+        $request->validate([
+            'name'           => 'required|string|max:100',
+            'email'          => ['required', 'email', 'regex:/^[a-zA-Z0-9._%+-]+@gmail\.com$/i'],
+            'phone'          => 'required|string|max:30',
+            'id_type'        => 'required|in:KTP,Paspor',
+            'id_number'      => 'required|string|min:6|max:30',
+            'full_address'   => 'required|string|max:255',
+            'city'           => 'required|string|max:100',
+            'province'       => 'required|string|max:100',
+            'destination'    => 'required|string|max:80',
+            'departure_date' => 'required|date',
+            'return_date'    => 'required|date|after_or_equal:departure_date',
+            'capacity_kg'    => 'required|integer|min:1|max:50',
+            'experience'     => 'required|string|max:100',
+            'categories'     => 'required|array|min:1',
+            'motivation'     => 'required|string|min:5',
+            'bank_name'      => 'required|string|max:50',
+            'bank_holder'    => 'required|string|max:100',
+            'bank_account'   => 'required|string|min:6|max:30',
+            'agree_customs'  => 'accepted',
+        ], [
+            'email.regex'            => 'Email Jastiper wajib menggunakan domain @gmail.com.',
+            'categories.required'    => 'Pilih minimal satu kategori makanan yang dapat dibawa.',
+            'agree_customs.accepted' => 'Anda wajib menyetujui pernyataan aturan Bea Cukai dan Karantina TitipGo.',
+        ]);
+
+        try {
+            $bank = new BankAccount();
+            $bank->provider       = $request->bank_name;
+            $bank->account_number = $request->bank_account;
+            $bank->account_holder = $request->bank_holder;
+            $bank->is_primary     = true;
+            $bank->save();
+
+            $notif = new Notification();
+            $notif->role    = 'jastiper';
+            $notif->title   = 'Akun Partner Jastiper Aktif!';
+            $notif->message = "Selamat {$request->name}, pengajuan rute {$request->destination} ({$request->capacity_kg} kg) telah diverifikasi. Anda kini dapat membuka Pre-Order!";
+            $notif->save();
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', 'Terjadi kendala saat menyimpan pengajuan: ' . $e->getMessage());
+        }
+
+        session([
+            'is_logged_in'  => true,
+            'is_jastiper'   => true,
+            'user_name'     => trim($request->name),
+            'user_email'    => strtolower(trim($request->email)),
+            'user_phone'    => trim($request->phone),
+            'user_city'     => trim($request->city),
+            'user_province' => trim($request->province),
+            'user_address'  => trim($request->full_address),
+        ]);
+        session()->save();
+
+        return redirect()->route('jastiper.dashboard')
+            ->with('success', 'Selamat! Pengajuan Jastiper Anda diterima dan akun kini beralih ke Mode Partner Jastiper.');
+    }
+
+    // 5. POV JASTIPER: Dashboard, Grafik, & Pencairan Dana
     public function shopperDashboard()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
 
-        $user = $this->getDefaultUser();
-        $items = JastipItem::latest()->get();
-        $orders = Order::with('item')->latest()->get();
-        $banks = BankAccount::all();
-        $withdrawals = Withdrawal::latest()->get();
+        $user         = $this->getDefaultUser();
+        $items        = JastipItem::latest()->get();
+        $orders       = Order::with('item')->latest()->get();
+        $bankAccounts = BankAccount::latest()->get();
+        $withdrawals  = Withdrawal::latest()->get();
 
-        $grossEarnings = $orders->where('payment_status', 'Lunas')->sum('subtotal');
-        $withdrawnTotal = $withdrawals->sum('amount');
-        $availableBalance = max(0, $grossEarnings - $withdrawnTotal);
-        $unreadNotif = Notification::where('role', 'jastiper')->where('is_read', false)->count();
+        $totalRevenue     = Order::where('payment_status', 'Lunas')->sum('subtotal');
+        $totalWithdrawn   = Withdrawal::sum('amount');
+        $availableBalance = max(0, $totalRevenue - $totalWithdrawn);
+        $unreadNotif      = Notification::where('role', 'jastiper')->where('is_read', false)->count();
+
+        $chartLabels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+        $chartData   = [2, 4, 3, 5, 4, 6, max(1, $orders->count())];
 
         return view('shopper.dashboard', compact(
-            'user', 'items', 'orders', 'banks', 'withdrawals',
-            'grossEarnings', 'availableBalance', 'unreadNotif'
+            'user',
+            'items',
+            'orders',
+            'bankAccounts',
+            'withdrawals',
+            'totalRevenue',
+            'totalWithdrawn',
+            'availableBalance',
+            'unreadNotif',
+            'chartLabels',
+            'chartData'
         ));
     }
 
@@ -429,11 +442,11 @@ class JastipController extends Controller
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
 
         $request->validate([
-            'bank_id' => 'required|exists:bank_accounts,id',
-            'amount'  => 'required|integer|min:10000',
+            'bank_account_id' => 'required|exists:bank_accounts,id',
+            'amount'          => 'required|integer|min:10000',
         ]);
 
-        $bank = BankAccount::findOrFail($request->bank_id);
+        $bank = BankAccount::findOrFail($request->bank_account_id);
 
         Withdrawal::create([
             'provider'       => $bank->provider,
@@ -448,24 +461,15 @@ class JastipController extends Controller
             'message' => 'Dana sebesar Rp ' . number_format($request->amount, 0, ',', '.') . " telah ditransfer ke {$bank->provider} ({$bank->account_number}).",
         ]);
 
-        return back()->with('success', "Dana Rp " . number_format($request->amount, 0, ',', '.') . " berhasil dicairkan ke {$bank->provider}!");
+        return back()->with('success', 'Dana Rp ' . number_format($request->amount, 0, ',', '.') . " berhasil dicairkan ke {$bank->provider}!");
     }
 
-    // 9. POV JASTIPER: Kelola Katalog & Buka PO Baru (Upload Gambar + Deskripsi)
+    // 6. POV JASTIPER: Kelola Katalog & Buka PO Baru
     public function shopperCatalog()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
         $items = JastipItem::latest()->get();
-        $categories = [
-            'Cokelat & Olahan Kakao',
-            'Biskuit, Kue Kering & Pastry Tersegel',
-            'Camilan Ringan Kemasan (Snacks & Chips)',
-            'Permen & Manisan Kemasan',
-            'Mie Instan & Bumbu/Saus Kemasan Segel',
-            'Kopi, Teh & Bubuk Minuman',
-            'Makanan Bayi & Suplemen Makanan',
-        ];
-        return view('shopper.catalog', compact('items', 'categories'));
+        return view('shopper.catalog', compact('items'));
     }
 
     public function storeCatalogItem(Request $request)
@@ -482,11 +486,9 @@ class JastipController extends Controller
             'weight'         => 'nullable|string|max:50',
             'po_close_date'  => 'nullable|date',
             'description'    => 'required|string',
-            'image_file'     => 'nullable|image|max:2048',
-            'image_url'      => 'nullable|url',
+            'image'          => 'nullable|image|max:2048',
         ]);
 
-        // Otomatis hitung estimasi pengiriman berdasarkan negara asal
         $country = strtolower($validated['origin_country']);
         if (str_contains($country, 'singapura') || str_contains($country, 'malaysia')) {
             $est = "2 - 3 Hari ({$validated['origin_country']} → Indonesia)";
@@ -497,10 +499,8 @@ class JastipController extends Controller
         }
 
         $imagePath = 'https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=600';
-        if ($request->hasFile('image_file')) {
-            $imagePath = $request->file('image_file')->store('jastip_items', 'public');
-        } elseif (!empty($validated['image_url'])) {
-            $imagePath = $validated['image_url'];
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('jastip_items', 'public');
         }
 
         JastipItem::create([
@@ -512,16 +512,16 @@ class JastipController extends Controller
             'price'              => $validated['price'],
             'quota'              => $validated['quota'],
             'weight'             => $validated['weight'] ?? '250 gr',
-            'po_close_date'      => $validated['po_close_date'],
-            'jastiper_name'      => session('user_name', 'Rimanda Santa'),
+            'po_close_date'      => $validated['po_close_date'] ?? now()->addDays(7),
+            'jastiper_name'      => session('user_name', 'Partner Jastiper'),
             'description'        => $validated['description'],
             'image'              => $imagePath,
         ]);
 
-        return back()->with('success', 'Produk & Open PO baru berhasil ditambahkan ke katalog!');
+        return back()->with('success', 'Produk & Open PO baru berhasil diterbitkan ke katalog pembeli!');
     }
 
-    // 10. POV JASTIPER: Kelola 4 Tahap Status Pesanan Berurutan (1 -> 2 -> 3 -> 4)
+    // 7. POV JASTIPER: Kelola Status Pesanan (4 Tahap)
     public function shopperOrders()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
@@ -529,29 +529,28 @@ class JastipController extends Controller
         return view('shopper.orders', compact('orders'));
     }
 
-    public function advanceOrderStep(Request $request, $id)
+    public function updateOrderStatus(Request $request, $orderId)
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
 
-        $order = Order::findOrFail($id);
-        $nextStep = min(4, $order->step_status + 1);
+        $order = Order::findOrFail($orderId);
+        $step  = (int) $request->input('step_status', min(4, $order->step_status + 1));
 
         $labels = [
             1 => '1. Pesanan Diterima & Dibeli di Negara Asal',
             2 => '2. Lolos Bea Cukai & Penerbangan ke Indonesia',
-            3 => '3. Kurir Lokal Menuju Alamat Pelanggan',
-            4 => '4. Pesanan Selesai & Diterima Pelanggan',
+            3 => '3. Diantar Kurir Lokal ke Alamat Pembeli',
+            4 => '4. Pesanan Tiba & Selesai',
         ];
 
         $updateData = [
-            'step_status'  => $nextStep,
-            'status_label' => $labels[$nextStep],
+            'step_status'  => $step,
+            'status_label' => $labels[$step] ?? $labels[1],
         ];
 
-        // Jika masuk tahap 3 (kurir lokal mengantar), simpan kendaraan & plat nomor
-        if ($nextStep === 3) {
-            $updateData['courier_vehicle'] = $request->courier_vehicle ?: 'Motor Honda Scoopy Pink Coquette';
-            $updateData['courier_plate']   = $request->courier_plate ?: 'BB 2026 RS';
+        if ($step === 3) {
+            $updateData['courier_vehicle'] = $request->input('courier_vehicle') ?: 'Honda Vario 160 Hitam';
+            $updateData['courier_plate']   = $request->input('courier_plate') ?: 'BB 4821 XW';
         }
 
         $order->update($updateData);
@@ -559,13 +558,13 @@ class JastipController extends Controller
         Notification::create([
             'role'    => 'buyer',
             'title'   => "Update Pesanan #{$order->order_code}",
-            'message' => "Status pesanan Anda kini: {$labels[$nextStep]}",
+            'message' => "Status pesanan Anda kini: {$updateData['status_label']}",
         ]);
 
-        return back()->with('success', "Pesanan #{$order->order_code} berlanjut ke tahap {$nextStep}!");
+        return back()->with('success', "Status pesanan #{$order->order_code} berhasil diperbarui ke tahap {$step}!");
     }
 
-    // 11. POV JASTIPER: Halaman Notifikasi Terpisah & Profil Interaktif + Rekening Bank
+    // 8. POV JASTIPER: Notifikasi & Profil Rekening Bank
     public function shopperNotifications()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
@@ -577,68 +576,26 @@ class JastipController extends Controller
     public function shopperProfile()
     {
         if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
-        $user = $this->getDefaultUser();
-        $banks = BankAccount::all();
-        return view('shopper.profile', compact('user', 'banks'));
+        $user         = $this->getDefaultUser();
+        $bankAccounts = BankAccount::latest()->get();
+        return view('shopper.profile', compact('user', 'bankAccounts'));
     }
 
-    public function updateProfile(Request $request)
+    public function storeBankAccount(Request $request)
     {
         $request->validate([
-            'name'         => 'required|string|max:100',
-            'email'        => 'required|email',
-            'phone'        => 'required|string|max:30',
-            'address'      => 'required|string|max:255',
-            'avatar_choice'=> 'nullable|string',
-            'avatar_file'  => 'nullable|image|max:2048',
-        ]);
-
-        $avatar = session('user_avatar');
-        if ($request->hasFile('avatar_file')) {
-            $path = $request->file('avatar_file')->store('avatars', 'public');
-            $avatar = asset('storage/' . $path);
-        } elseif ($request->filled('avatar_choice')) {
-            $avatar = $request->avatar_choice;
-        }
-
-        session([
-            'user_name'   => $request->name,
-            'user_email'  => $request->email,
-            'user_phone'  => $request->phone,
-            'user_address'=> $request->address,
-            'user_avatar' => $avatar,
-        ]);
-
-        return back()->with('success', 'Pengaturan akun & foto profil berhasil diperbarui!');
-    }
-
-    public function storeBank(Request $request)
-    {
-        $request->validate([
-            'provider'       => 'required|in:BNI,BRI,PayPal,Amazon Wallet,BCA',
+            'provider'       => 'required|string|max:50',
             'account_number' => 'required|string|max:100',
+            'account_holder' => 'required|string|max:100',
         ]);
 
         BankAccount::create([
             'provider'       => $request->provider,
             'account_number' => $request->account_number,
-            'account_holder' => session('user_name', 'Rimanda Santa'),
+            'account_holder' => $request->account_holder,
             'is_primary'     => false,
         ]);
 
         return back()->with('success', "Rekening {$request->provider} berhasil ditambahkan!");
-    }
-
-    public function setPrimaryBank($id)
-    {
-        BankAccount::query()->update(['is_primary' => false]);
-        BankAccount::where('id', $id)->update(['is_primary' => true]);
-        return back()->with('success', 'Rekening utama pencairan diperbarui.');
-    }
-
-    public function destroyBank($id)
-    {
-        BankAccount::findOrFail($id)->delete();
-        return back()->with('success', 'Rekening dihapus.');
     }
 }
