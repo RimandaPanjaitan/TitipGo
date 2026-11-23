@@ -36,6 +36,9 @@ Route::prefix('jastiper')->group(function () {
     Route::get('/dashboard', [JastipController::class, 'shopperDashboard'])->name('jastiper.dashboard');
     Route::get('/catalog', [JastipController::class, 'shopperCatalog'])->name('jastiper.catalog');
     Route::post('/catalog', [JastipController::class, 'storeCatalogItem'])->name('jastiper.catalog.store');
+    Route::patch('/catalog/{id}/toggle', [JastipController::class, 'toggleCatalogItem'])->name('jastiper.catalog.toggle');
+    Route::put('/catalog/{id}', [JastipController::class, 'updateCatalogItem'])->name('jastiper.catalog.update');
+    Route::delete('/catalog/{id}', [JastipController::class, 'destroyCatalogItem'])->name('jastiper.catalog.destroy');
     Route::get('/orders', [JastipController::class, 'shopperOrders'])->name('jastiper.orders');
     Route::patch('/orders/{orderId}/status', [JastipController::class, 'updateOrderStatus'])->name('jastiper.orders.status');
     Route::post('/withdraw', [JastipController::class, 'withdrawFunds'])->name('jastiper.withdraw');

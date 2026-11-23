@@ -561,6 +561,50 @@ class JastipController extends Controller
         return back()->with('success', 'Produk & Open PO baru berhasil diterbitkan ke katalog pembeli!');
     }
 
+    public function toggleCatalogItem($id)
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $item = JastipItem::findOrFail($id);
+        $newQuota = $item->quota > 0 ? 0 : 10;
+        $item->update(['quota' => $newQuota]);
+
+        $statusText = $newQuota > 0 ? 'diaktifkan kembali (10 slot tersedia)' : 'dinonaktifkan sementara (0 slot)';
+        return back()->with('success', "Item \"{$item->name}\" berhasil {$statusText}.");
+    }
+
+    public function updateCatalogItem(Request $request, $id)
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $item = JastipItem::findOrFail($id);
+        $validated = $request->validate([
+            'name'           => 'required|string|max:150',
+            'origin_country' => 'required|string|max:80',
+            'origin_city'    => 'required|string|max:100',
+            'category'       => 'required|string|max:100',
+            'price'          => 'required|integer|min:1000',
+            'quota'          => 'required|integer|min:0|max:200',
+            'po_close_date'  => 'nullable|date',
+            'description'    => 'required|string',
+        ]);
+
+        $item->update($validated);
+
+        return back()->with('success', "Perubahan pada \"{$item->name}\" berhasil disimpan!");
+    }
+
+    public function destroyCatalogItem($id)
+    {
+        if (!session('is_jastiper')) return redirect()->route('jastiper.apply');
+
+        $item = JastipItem::findOrFail($id);
+        $name = $item->name;
+        $item->delete();
+
+        return back()->with('success', "Item \"{$name}\" berhasil dihapus dari katalog.");
+    }
+
     // 7. POV JASTIPER: Kelola Status Pesanan (4 Tahap)
     public function shopperOrders()
     {
