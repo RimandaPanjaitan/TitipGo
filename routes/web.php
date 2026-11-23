@@ -1,7 +1,7 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\JastipController;
+use Illuminate\Support\Facades\Route;
 
 // Halaman Awal, Auth Validasi Ketat, Lokasi, & Welcome Screen
 Route::get('/', [JastipController::class, 'landing'])->name('landing');
@@ -11,12 +11,9 @@ Route::get('/location', [JastipController::class, 'locationSetup'])->name('locat
 Route::post('/location', [JastipController::class, 'locationSave'])->name('location.save');
 Route::get('/welcome-user', [JastipController::class, 'welcomeScreen'])->name('welcome.screen');
 
-// Alur Pembeli -> Jastiper (3 Bagian Form Partner Jastiper)
+// Alur Satu Arah: Pembeli -> Partner Jastiper
 Route::get('/become-jastiper', [JastipController::class, 'applyJastiperForm'])->name('jastiper.apply');
 Route::post('/become-jastiper', [JastipController::class, 'applyJastiperSubmit'])->name('jastiper.apply.submit');
-
-// Update Profil Bersama (Avatar & Galeri Foto)
-Route::post('/profile/update', [JastipController::class, 'updateProfile'])->name('profile.update');
 
 // POV Pembeli
 Route::prefix('buyer')->group(function () {
@@ -45,30 +42,3 @@ Route::prefix('jastiper')->group(function () {
     Route::get('/profile', [JastipController::class, 'shopperProfile'])->name('jastiper.profile');
     Route::post('/bank-account', [JastipController::class, 'storeBankAccount'])->name('jastiper.bank.store');
 });
-
-// PENGHUBUNG SATU ARAH: Pembeli -> Jastiper Permanen
-Route::get('/apply-jastiper', [JastipController::class, 'applyJastiperForm'])->name('jastiper.apply');
-Route::post('/apply-jastiper', [JastipController::class, 'applyJastiperSubmit'])->name('jastiper.apply.submit');
-
-// POV EKSKLUSIF JASTIPER (Tanpa Akses Kembali ke Mode Pembeli)
-Route::prefix('jastiper')->group(function () {
-    Route::get('/dashboard', [JastipController::class, 'shopperDashboard'])->name('jastiper.dashboard');
-    Route::post('/withdraw', [JastipController::class, 'withdrawFunds'])->name('jastiper.withdraw');
-    Route::get('/catalog', [JastipController::class, 'shopperCatalog'])->name('jastiper.catalog');
-    Route::post('/catalog', [JastipController::class, 'storeCatalogItem'])->name('jastiper.catalog.store');
-    Route::get('/orders', [JastipController::class, 'shopperOrders'])->name('jastiper.orders');
-    Route::patch('/orders/{id}/advance', [JastipController::class, 'advanceOrderStep'])->name('jastiper.orders.advance');
-    Route::get('/notifications', [JastipController::class, 'shopperNotifications'])->name('jastiper.notifications');
-    Route::get('/profile', [JastipController::class, 'shopperProfile'])->name('jastiper.profile');
-    Route::post('/bank', [JastipController::class, 'storeBank'])->name('jastiper.bank.store');
-    Route::patch('/bank/{id}/primary', [JastipController::class, 'setPrimaryBank'])->name('jastiper.bank.primary');
-    Route::delete('/bank/{id}', [JastipController::class, 'destroyBank'])->name('jastiper.bank.destroy');
-});
-
-// Landing, Auth Terpisah (Pembeli vs Jastiper), Setup Lokasi, & Welcome Screen
-Route::get('/', [JastipController::class, 'landing'])->name('landing');
-Route::get('/auth', [JastipController::class, 'authForm'])->name('auth');
-Route::post('/auth', [JastipController::class, 'authSubmit'])->name('auth.submit');
-Route::get('/location', [JastipController::class, 'locationSetup'])->name('location.setup');
-Route::post('/location', [JastipController::class, 'locationSave'])->name('location.save');
-Route::get('/welcome-user', [JastipController::class, 'welcomeScreen'])->name('welcome.screen');
