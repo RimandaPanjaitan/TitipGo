@@ -3,12 +3,13 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\JastipController;
 
-// Landing, Auth Terpisah (Pembeli vs Jastiper), & Setup Lokasi
+// Onboarding: Landing -> Auth -> Lokasi -> Welcome -> Dashboard
 Route::get('/', [JastipController::class, 'landing'])->name('landing');
 Route::get('/auth', [JastipController::class, 'authForm'])->name('auth');
 Route::post('/auth', [JastipController::class, 'authSubmit'])->name('auth.submit');
 Route::get('/location', [JastipController::class, 'locationSetup'])->name('location.setup');
 Route::post('/location', [JastipController::class, 'locationSave'])->name('location.save');
+Route::get('/welcome-user', [JastipController::class, 'welcomeScreen'])->name('welcome.screen');
 
 // Update Profil Bersama (Avatar & Galeri Foto)
 Route::post('/profile/update', [JastipController::class, 'updateProfile'])->name('profile.update');

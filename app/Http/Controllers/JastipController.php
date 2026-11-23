@@ -39,58 +39,57 @@ class JastipController extends Controller
 
     public function authForm(Request $request)
     {
-        session()->forget(['is_logged_in', 'user_name', 'user_email', 'user_phone', 'user_address', 'user_avatar']);
         $role = $request->get('role', 'buyer');
         $mode = $request->get('mode', 'login');
         return view('auth', compact('role', 'mode'));
     }
 
-   public function authSubmit(Request $request)
+    public function authSubmit(Request $request)
     {
-        $request->validate([
-            'identifier' => 'required|string|max:120',
-            'name'       => 'nullable|string|max:100',
-            'email'      => 'nullable|email|max:120',
-            'phone'      => 'nullable|string|max:30',
-            'address'    => 'nullable|string|max:255',
-            'role'       => 'required|in:buyer,jastiper',
-        ]);
+        $rawInput = trim((string) ($request->input('identifier') ?: $request->input('name') ?: ''));
 
-        $rawInput = trim($request->identifier);
+        if ($rawInput === '') {
+            return back()->with('error', 'Silakan masukkan nama akun, email, atau nomor telepon terlebih dahulu.');
+        }
 
         if ($request->filled('name')) {
-            $accountName = ucwords(strtolower(trim($request->name)));
+            $accountName = ucwords(strtolower(trim($request->input('name'))));
         } elseif (filter_var($rawInput, FILTER_VALIDATE_EMAIL)) {
             $accountName = ucwords(str_replace(['.', '_', '-'], ' ', explode('@', $rawInput)[0]));
         } else {
             $accountName = ucwords(strtolower($rawInput));
         }
 
-        $accountEmail = $request->email
-            ?: (filter_var($rawInput, FILTER_VALIDATE_EMAIL) ? $rawInput : strtolower(str_replace(' ', '', $accountName)) . '@gmail.com');
+        $accountEmail = $request->filled('email')
+            ? trim($request->input('email'))
+            : (filter_var($rawInput, FILTER_VALIDATE_EMAIL)
+                ? $rawInput
+                : strtolower(preg_replace('/\s+/', '', $accountName)) . '@gmail.com');
 
-        $accountPhone = $request->phone
-            ?: (preg_match('/^[0-9+\-\s]{8,}$/', $rawInput) ? $rawInput : '0812-6489-2026');
+        $accountPhone = $request->filled('phone')
+            ? trim($request->input('phone'))
+            : (preg_match('/^[0-9+\-\s]{8,}$/', $rawInput) ? $rawInput : '0812-6489-2026');
 
-        $accountAddress = $request->address ?: session('user_address', 'Sitoluama, Laguboti, Toba, Sumatera Utara');
+        $accountAddress = $request->filled('address')
+            ? trim($request->input('address'))
+            : 'Sitoluama, Laguboti, Toba, Sumatera Utara';
+
+        $role = $request->input('role', 'buyer');
+        $isJastiper = ($role === 'jastiper');
 
         session([
+            'is_logged_in' => true,
+            'is_jastiper'  => $isJastiper,
             'user_name'    => $accountName,
             'user_email'   => $accountEmail,
             'user_phone'   => $accountPhone,
             'user_address' => $accountAddress,
             'user_avatar'  => 'https://api.dicebear.com/9.x/lorelei/svg?seed=' . urlencode($accountName) . '&backgroundColor=ffd5dc',
         ]);
+        session()->save();
 
-        if ($request->role === 'jastiper') {
-            session(['is_jastiper' => true]);
-            return redirect()->route('location.setup', ['next' => 'jastiper'])
-                ->with('success', "Selamat datang di Portal Jastiper, {$accountName}!");
-        }
-
-        session(['is_jastiper' => false]);
-        return redirect()->route('location.setup', ['next' => 'buyer'])
-            ->with('success', "Halo {$accountName}! Silakan aktifkan lokasi Anda.");
+        return redirect()->route('location.setup', ['next' => $isJastiper ? 'jastiper' : 'buyer'])
+            ->with('success', "Halo {$accountName}! Silakan konfirmasi lokasi Anda.");
     }
 
     // 2. Halaman Menyalakan Lokasi Setelah Login -> Arahkan ke Welcome Screen
